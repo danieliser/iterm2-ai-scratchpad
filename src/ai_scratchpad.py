@@ -12,14 +12,11 @@ import asyncio
 import json
 import logging
 import tempfile
-import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from aiohttp import web
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -38,7 +35,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
-NOTES_DIR = Path.home() / ".config" / "iterm2" / "notes" / "by-session"
+NOTES_DIR = Path.home() / ".config" / "iterm2-scratchpad" / "notes" / "by-session"
 DEFAULT_SESSION = "default"
 
 
@@ -195,53 +192,6 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
         log.info("SSE client disconnected (total=%d)", len(_sse_clients))
 
     return resp
-
-
-# ---------------------------------------------------------------------------
-# Watchdog file monitor
-# Debounced FSEvents watcher: broadcasts SSE when notes files change on disk
-# (supports direct file-append ingestion path, not just HTTP POST).
-# ---------------------------------------------------------------------------
-_debounce_timers: dict = {}
-_loop: asyncio.AbstractEventLoop | None = None
-
-
-class _NoteFileHandler(FileSystemEventHandler):
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        path = event.src_path
-        if not path.endswith(".json"):
-            return
-        self._debounce(path)
-
-    def on_created(self, event):
-        self.on_modified(event)
-
-    def _debounce(self, path: str) -> None:
-        if path in _debounce_timers:
-            _debounce_timers[path].cancel()
-        timer = threading.Timer(0.15, self._fire, args=(path,))
-        _debounce_timers[path] = timer
-        timer.start()
-
-    def _fire(self, path: str) -> None:
-        _debounce_timers.pop(path, None)
-        if _loop is None:
-            return
-        asyncio.run_coroutine_threadsafe(
-            broadcast("notes_updated", {"path": path}),
-            _loop,
-        )
-
-
-def start_watchdog() -> Observer:
-    NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    observer = Observer()
-    observer.schedule(_NoteFileHandler(), str(NOTES_DIR), recursive=False)
-    observer.start()
-    log.info("Watchdog monitoring %s", NOTES_DIR)
-    return observer
 
 
 # ---------------------------------------------------------------------------
@@ -496,25 +446,8 @@ def build_app() -> web.Application:
     return app
 
 
-async def _main():
-    global _loop
-    _loop = asyncio.get_running_loop()
-    observer = start_watchdog()
-    try:
-        app = build_app()
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, "127.0.0.1", 9999)
-        await site.start()
-        log.info("Starting AI Scratchpad server on http://localhost:9999")
-        log.info("Log file: %s", LOG_PATH)
-        # Run forever
-        while True:
-            await asyncio.sleep(3600)
-    finally:
-        observer.stop()
-        observer.join()
-
-
 if __name__ == "__main__":
-    asyncio.run(_main())
+    app = build_app()
+    log.info("Starting AI Scratchpad server on http://localhost:9999")
+    log.info("Log file: %s", LOG_PATH)
+    web.run_app(app, host="127.0.0.1", port=9999, access_log=None)
