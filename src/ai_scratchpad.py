@@ -59,6 +59,9 @@ DEFAULT_SESSION = "default"
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
 _current_session_id: str = DEFAULT_SESSION
 
+# Server start time for uptime reporting
+_start_time: datetime = datetime.now(timezone.utc)
+
 
 def get_current_session_id() -> str:
     return _current_session_id
@@ -253,6 +256,21 @@ async def handle_get_session(request: web.Request) -> web.Response:
     return cors(web.Response(
         content_type="application/json",
         text=json.dumps({"session_id": get_current_session_id()}),
+    ))
+
+
+async def handle_health(request: web.Request) -> web.Response:
+    uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({
+            "status": "ok",
+            "uptime_seconds": int(uptime),
+            "notes_dir": str(NOTES_DIR),
+            "session_id": get_current_session_id(),
+            "watchdog": WATCHDOG_AVAILABLE,
+            "iterm2": ITERM2_AVAILABLE,
+        }),
     ))
 
 
@@ -536,6 +554,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/notes", handle_get_notes)
     app.router.add_delete("/api/notes", handle_delete_notes)
     app.router.add_get("/api/session", handle_get_session)
+    app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)
     return app
 

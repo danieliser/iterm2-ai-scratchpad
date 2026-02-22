@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# scratchpad — post a note to the iTerm2 AI Scratchpad server
+#
+# Usage:
+#   scratchpad "message here"        # text as argument
+#   echo "message" | scratchpad      # text via stdin
+#   scratchpad -s myapp "message"    # custom source (default: cli)
+
+set -euo pipefail
+
+SERVER="${SCRATCHPAD_URL:-http://localhost:9999}"
+SOURCE="cli"
+
+# Parse optional -s / --source flag
+if [[ "${1:-}" == "-s" || "${1:-}" == "--source" ]]; then
+    SOURCE="${2:?-s requires a value}"
+    shift 2
+fi
+
+# Read text: from args or stdin
+if [[ $# -gt 0 ]]; then
+    TEXT="$*"
+elif [[ ! -t 0 ]]; then
+    TEXT="$(cat)"
+else
+    echo "Usage: scratchpad [-s source] \"message\"" >&2
+    echo "       echo \"message\" | scratchpad" >&2
+    exit 1
+fi
+
+if [[ -z "$TEXT" ]]; then
+    echo "scratchpad: empty message, nothing posted" >&2
+    exit 1
+fi
+
+# Build JSON — use jq if available for safe escaping, else printf fallback
+if command -v jq &>/dev/null; then
+    PAYLOAD="$(jq -cn --arg text "$TEXT" --arg source "$SOURCE" \
+        '{text: $text, source: $source}')"
+else
+    # Escape backslashes, double quotes, and control chars via printf
+    ESCAPED_TEXT="$(printf '%s' "$TEXT" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//')"
+    ESCAPED_SOURCE="$(printf '%s' "$SOURCE" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    PAYLOAD="{\"text\":\"${ESCAPED_TEXT}\",\"source\":\"${ESCAPED_SOURCE}\"}"
+fi
+
+# POST to server
+if command -v curl &>/dev/null; then
+    RESPONSE="$(curl -sf -X POST "${SERVER}/api/notes" \
+        -H 'Content-Type: application/json' \
+        -d "$PAYLOAD" 2>&1)" || {
+        echo "scratchpad: server unavailable at ${SERVER}" >&2
+        exit 1
+    }
+elif command -v wget &>/dev/null; then
+    RESPONSE="$(wget -qO- --post-data="$PAYLOAD" \
+        --header='Content-Type: application/json' \
+        "${SERVER}/api/notes" 2>&1)" || {
+        echo "scratchpad: server unavailable at ${SERVER}" >&2
+        exit 1
+    }
+else
+    echo "scratchpad: curl or wget required" >&2
+    exit 1
+fi
+
+# Extract id from response for confirmation
+if command -v jq &>/dev/null; then
+    ID="$(printf '%s' "$RESPONSE" | jq -r '.id // empty' 2>/dev/null)"
+    if [[ -n "$ID" ]]; then
+        echo "posted: ${ID}"
+    else
+        echo "scratchpad: unexpected response: $RESPONSE" >&2
+        exit 1
+    fi
+else
+    echo "posted"
+fi
