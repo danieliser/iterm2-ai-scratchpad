@@ -33,10 +33,27 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# iTerm2 integration (optional — graceful fallback when not running inside iTerm2)
+# ---------------------------------------------------------------------------
+try:
+    import iterm2 as _iterm2
+    ITERM2_AVAILABLE = True
+except ImportError:
+    _iterm2 = None
+    ITERM2_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
 NOTES_DIR = Path.home() / ".config" / "iterm2-scratchpad" / "notes" / "by-session"
 DEFAULT_SESSION = "default"
+
+# Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
+_current_session_id: str = DEFAULT_SESSION
+
+
+def get_current_session_id() -> str:
+    return _current_session_id
 
 
 def notes_path(session_id: str = DEFAULT_SESSION) -> Path:
@@ -125,6 +142,7 @@ async def handle_post_note(request: web.Request) -> web.Response:
     if not text:
         return cors(web.Response(status=400, text="text is required"))
 
+    session_id = get_current_session_id()
     note = {
         "id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -133,10 +151,10 @@ async def handle_post_note(request: web.Request) -> web.Response:
         "metadata": body.get("metadata", {}),
     }
 
-    notes = load_notes()
+    notes = load_notes(session_id)
     notes.append(note)
-    save_notes(notes)
-    log.info("Note added id=%s source=%s", note["id"], note["source"])
+    save_notes(notes, session_id)
+    log.info("Note added id=%s source=%s session=%s", note["id"], note["source"], session_id)
 
     await broadcast("note_added", note)
 
@@ -148,22 +166,31 @@ async def handle_post_note(request: web.Request) -> web.Response:
 
 
 async def handle_get_notes(request: web.Request) -> web.Response:
-    notes = load_notes()
+    session_id = get_current_session_id()
+    notes = load_notes(session_id)
     return cors(web.Response(
         content_type="application/json",
-        text=json.dumps({"notes": notes, "session_id": DEFAULT_SESSION, "count": len(notes)}),
+        text=json.dumps({"notes": notes, "session_id": session_id, "count": len(notes)}),
     ))
 
 
 async def handle_delete_notes(request: web.Request) -> web.Response:
-    notes = load_notes()
+    session_id = get_current_session_id()
+    notes = load_notes(session_id)
     cleared = len(notes)
-    save_notes([])
-    log.info("All notes cleared (count=%d)", cleared)
+    save_notes([], session_id)
+    log.info("All notes cleared session=%s count=%d", session_id, cleared)
     await broadcast("notes_cleared", {})
     return cors(web.Response(
         content_type="application/json",
         text=json.dumps({"status": "ok", "cleared": cleared}),
+    ))
+
+
+async def handle_get_session(request: web.Request) -> web.Response:
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"session_id": get_current_session_id()}),
     ))
 
 
@@ -435,7 +462,7 @@ connectSSE();
 
 
 # ---------------------------------------------------------------------------
-# App factory & entry point
+# App factory
 # ---------------------------------------------------------------------------
 def build_app() -> web.Application:
     app = web.Application()
@@ -444,12 +471,92 @@ def build_app() -> web.Application:
     app.router.add_post("/api/notes", handle_post_note)
     app.router.add_get("/api/notes", handle_get_notes)
     app.router.add_delete("/api/notes", handle_delete_notes)
+    app.router.add_get("/api/session", handle_get_session)
     app.router.add_get("/events", handle_sse)
     return app
 
 
-if __name__ == "__main__":
+# ---------------------------------------------------------------------------
+# iTerm2 session monitor
+# Tracks the active session UUID and updates _current_session_id whenever
+# the user switches tabs or creates new sessions.
+# ---------------------------------------------------------------------------
+async def _session_monitor(connection) -> None:
+    """Watch iTerm2 layout changes and keep _current_session_id current."""
+    global _current_session_id
+    app = await _iterm2.async_get_app(connection)
+
+    def _pick_active_session():
+        """Return the UUID of the frontmost session, or DEFAULT_SESSION."""
+        try:
+            window = app.current_window
+            if window is None:
+                return DEFAULT_SESSION
+            tab = window.current_tab
+            if tab is None:
+                return DEFAULT_SESSION
+            session = tab.current_session
+            if session is None:
+                return DEFAULT_SESSION
+            return session.session_id or DEFAULT_SESSION
+        except Exception as exc:
+            log.warning("Session detection error: %s", exc)
+            return DEFAULT_SESSION
+
+    # Set initial session
+    _current_session_id = _pick_active_session()
+    log.info("Initial session_id=%s", _current_session_id)
+
+    async with _iterm2.LayoutChangeMonitor(connection) as monitor:
+        while True:
+            await monitor.async_get()
+            new_id = _pick_active_session()
+            if new_id != _current_session_id:
+                log.info("Session changed: %s -> %s", _current_session_id, new_id)
+                _current_session_id = new_id
+                await broadcast("session_changed", {"session_id": new_id})
+
+
+# ---------------------------------------------------------------------------
+# Entry points — dual-mode: iTerm2 AutoLaunch or standalone
+# ---------------------------------------------------------------------------
+async def _run_server() -> None:
+    """Start the aiohttp server and run forever (used in both modes)."""
     app = build_app()
-    log.info("Starting AI Scratchpad server on http://localhost:9999")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 9999)
+    await site.start()
+    log.info("Server running on http://localhost:9999 (session=%s)", get_current_session_id())
+
+
+async def _iterm2_main(connection) -> None:
+    """iTerm2 AutoLaunch entry point: register toolbelt panel + session monitor."""
+    # Register the webview toolbelt panel pointing at our server
+    await _iterm2.async_register_web_view_tool(
+        connection,
+        display_name="AI Scratchpad",
+        identifier="com.danieliser.iterm2-ai-scratchpad",
+        reveal_if_already_registered=False,
+        url="http://localhost:9999/",
+    )
+    log.info("Registered iTerm2 Toolbelt webview panel")
+
+    # Start aiohttp server
+    await _run_server()
+
+    # Run session monitor concurrently
+    await _session_monitor(connection)
+
+
+if __name__ == "__main__":
+    log.info("Starting AI Scratchpad (iterm2=%s)", ITERM2_AVAILABLE)
     log.info("Log file: %s", LOG_PATH)
-    web.run_app(app, host="127.0.0.1", port=9999, access_log=None)
+
+    if ITERM2_AVAILABLE:
+        # Running as iTerm2 AutoLaunch Full Environment script
+        _iterm2.run_until_complete(_iterm2_main)
+    else:
+        # Standalone mode — no iTerm2 API, use default session
+        app = build_app()
+        web.run_app(app, host="127.0.0.1", port=9999, access_log=None)
