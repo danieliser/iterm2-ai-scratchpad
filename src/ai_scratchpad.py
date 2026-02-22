@@ -126,8 +126,11 @@ _event_loop: asyncio.AbstractEventLoop | None = None
 if WATCHDOG_AVAILABLE:
     class _NoteFileHandler(FileSystemEventHandler):
         def on_modified(self, event):
-            if not event.is_directory and event.src_path.endswith(".json"):
-                self._debounce(event.src_path)
+            path = event.src_path
+            if (not event.is_directory
+                    and path.endswith(".json")
+                    and not os.path.basename(path).startswith(".notes_tmp_")):
+                self._debounce(path)
 
         def on_created(self, event):
             self.on_modified(event)
@@ -500,6 +503,8 @@ function connectSSE() {
 
   es.addEventListener('notes_updated', () => loadNotes());
 
+  es.addEventListener('session_changed', () => loadNotes());
+
   es.onerror = () => {
     status.textContent = 'disconnected';
     status.className = 'disconnected';
@@ -543,7 +548,12 @@ def build_app() -> web.Application:
 async def _session_monitor(connection) -> None:
     """Watch iTerm2 layout changes and keep _current_session_id current."""
     global _current_session_id
-    app = await _iterm2.async_get_app(connection)
+
+    try:
+        app = await _iterm2.async_get_app(connection)
+    except Exception as exc:
+        log.error("Failed to get iTerm2 app — session awareness disabled: %s", exc)
+        return
 
     def _pick_active_session():
         """Return the UUID of the frontmost session, or DEFAULT_SESSION."""
@@ -562,25 +572,32 @@ async def _session_monitor(connection) -> None:
             log.warning("Session detection error: %s", exc)
             return DEFAULT_SESSION
 
-    # Set initial session
-    _current_session_id = _pick_active_session()
-    log.info("Initial session_id=%s", _current_session_id)
+    try:
+        _current_session_id = _pick_active_session()
+        log.info("Initial session_id=%s", _current_session_id)
+    except Exception as exc:
+        log.error("Failed to set initial session: %s", exc)
 
     async with _iterm2.LayoutChangeMonitor(connection) as monitor:
         while True:
-            await monitor.async_get()
-            new_id = _pick_active_session()
-            if new_id != _current_session_id:
-                log.info("Session changed: %s -> %s", _current_session_id, new_id)
-                _current_session_id = new_id
-                await broadcast("session_changed", {"session_id": new_id})
+            try:
+                await monitor.async_get()
+                new_id = _pick_active_session()
+                if new_id != _current_session_id:
+                    log.info("Session changed: %s -> %s", _current_session_id, new_id)
+                    _current_session_id = new_id
+                    await broadcast("session_changed", {"session_id": new_id})
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log.error("Session monitor error (continuing): %s", exc)
 
 
 # ---------------------------------------------------------------------------
 # Entry points — dual-mode: iTerm2 AutoLaunch or standalone
 # ---------------------------------------------------------------------------
-async def _run_server() -> None:
-    """Start the aiohttp server (used in both modes)."""
+async def _run_server() -> web.AppRunner:
+    """Start the aiohttp server; returns runner so caller can cleanup()."""
     global _event_loop
     _event_loop = asyncio.get_running_loop()
     app = build_app()
@@ -589,6 +606,7 @@ async def _run_server() -> None:
     site = web.TCPSite(runner, "127.0.0.1", 9999)
     await site.start()
     log.info("Server running on http://localhost:9999 (session=%s)", get_current_session_id())
+    return runner
 
 
 async def _iterm2_main(connection) -> None:
@@ -604,7 +622,7 @@ async def _iterm2_main(connection) -> None:
     log.info("Registered iTerm2 Toolbelt webview panel")
 
     # Start aiohttp server + watchdog, then run session monitor
-    await _run_server()
+    runner = await _run_server()
     observer = start_watchdog()
     try:
         await _session_monitor(connection)
@@ -612,6 +630,7 @@ async def _iterm2_main(connection) -> None:
         if observer:
             observer.stop()
             observer.join()
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
@@ -624,7 +643,7 @@ if __name__ == "__main__":
     else:
         # Standalone mode — no iTerm2 API, use default session
         async def _standalone_main():
-            await _run_server()
+            runner = await _run_server()
             observer = start_watchdog()
             try:
                 while True:
@@ -633,5 +652,6 @@ if __name__ == "__main__":
                 if observer:
                     observer.stop()
                     observer.join()
+                await runner.cleanup()
 
         asyncio.run(_standalone_main())
