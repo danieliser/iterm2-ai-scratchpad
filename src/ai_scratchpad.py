@@ -12,11 +12,19 @@ import asyncio
 import json
 import logging
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from aiohttp import web
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -106,6 +114,56 @@ async def broadcast(event_type: str, data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Watchdog file monitor
+# Watches NOTES_DIR for external file writes and broadcasts SSE.
+# Thread-safe: _debounce_lock guards the timer dict across watchdog + timer threads.
+# ---------------------------------------------------------------------------
+_debounce_timers: dict = {}
+_debounce_lock = threading.Lock()
+_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+if WATCHDOG_AVAILABLE:
+    class _NoteFileHandler(FileSystemEventHandler):
+        def on_modified(self, event):
+            if not event.is_directory and event.src_path.endswith(".json"):
+                self._debounce(event.src_path)
+
+        def on_created(self, event):
+            self.on_modified(event)
+
+        def _debounce(self, path: str) -> None:
+            with _debounce_lock:
+                existing = _debounce_timers.get(path)
+                if existing:
+                    existing.cancel()
+                timer = threading.Timer(0.15, self._fire, args=(path,))
+                _debounce_timers[path] = timer
+            timer.start()
+
+        def _fire(self, path: str) -> None:
+            with _debounce_lock:
+                _debounce_timers.pop(path, None)
+            if _event_loop is not None:
+                asyncio.run_coroutine_threadsafe(
+                    broadcast("notes_updated", {}),
+                    _event_loop,
+                )
+
+
+def start_watchdog() -> "Observer | None":
+    if not WATCHDOG_AVAILABLE:
+        log.warning("watchdog not installed — file-based SSE updates disabled")
+        return None
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    observer = Observer()
+    observer.schedule(_NoteFileHandler(), str(NOTES_DIR), recursive=False)
+    observer.start()
+    log.info("Watchdog monitoring %s", NOTES_DIR)
+    return observer
+
+
+# ---------------------------------------------------------------------------
 # CORS helper
 # ---------------------------------------------------------------------------
 CORS_HEADERS = {
@@ -166,7 +224,8 @@ async def handle_post_note(request: web.Request) -> web.Response:
 
 
 async def handle_get_notes(request: web.Request) -> web.Response:
-    session_id = get_current_session_id()
+    # Allow explicit session_id override via query param
+    session_id = request.rel_url.query.get("session_id") or get_current_session_id()
     notes = load_notes(session_id)
     return cors(web.Response(
         content_type="application/json",
@@ -521,7 +580,9 @@ async def _session_monitor(connection) -> None:
 # Entry points — dual-mode: iTerm2 AutoLaunch or standalone
 # ---------------------------------------------------------------------------
 async def _run_server() -> None:
-    """Start the aiohttp server and run forever (used in both modes)."""
+    """Start the aiohttp server (used in both modes)."""
+    global _event_loop
+    _event_loop = asyncio.get_running_loop()
     app = build_app()
     runner = web.AppRunner(app)
     await runner.setup()
@@ -532,31 +593,45 @@ async def _run_server() -> None:
 
 async def _iterm2_main(connection) -> None:
     """iTerm2 AutoLaunch entry point: register toolbelt panel + session monitor."""
-    # Register the webview toolbelt panel pointing at our server
-    await _iterm2.async_register_web_view_tool(
+    # Register the webview toolbelt panel (positional args per iTerm2 tool API)
+    await _iterm2.tool.async_register_web_view_tool(
         connection,
-        display_name="AI Scratchpad",
-        identifier="com.danieliser.iterm2-ai-scratchpad",
-        reveal_if_already_registered=False,
-        url="http://localhost:9999/",
+        "AI Scratchpad",
+        "com.danieliser.ai-scratchpad",
+        True,
+        "http://localhost:9999/",
     )
     log.info("Registered iTerm2 Toolbelt webview panel")
 
-    # Start aiohttp server
+    # Start aiohttp server + watchdog, then run session monitor
     await _run_server()
-
-    # Run session monitor concurrently
-    await _session_monitor(connection)
+    observer = start_watchdog()
+    try:
+        await _session_monitor(connection)
+    finally:
+        if observer:
+            observer.stop()
+            observer.join()
 
 
 if __name__ == "__main__":
-    log.info("Starting AI Scratchpad (iterm2=%s)", ITERM2_AVAILABLE)
+    log.info("Starting AI Scratchpad (iterm2=%s, watchdog=%s)", ITERM2_AVAILABLE, WATCHDOG_AVAILABLE)
     log.info("Log file: %s", LOG_PATH)
 
     if ITERM2_AVAILABLE:
         # Running as iTerm2 AutoLaunch Full Environment script
-        _iterm2.run_until_complete(_iterm2_main)
+        _iterm2.run_forever(_iterm2_main)
     else:
         # Standalone mode — no iTerm2 API, use default session
-        app = build_app()
-        web.run_app(app, host="127.0.0.1", port=9999, access_log=None)
+        async def _standalone_main():
+            await _run_server()
+            observer = start_watchdog()
+            try:
+                while True:
+                    await asyncio.sleep(3600)
+            finally:
+                if observer:
+                    observer.stop()
+                    observer.join()
+
+        asyncio.run(_standalone_main())
