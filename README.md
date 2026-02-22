@@ -161,7 +161,7 @@ Add this to `.claude/settings.json` in any project to automatically post notes w
 
 `"async": true` ensures Claude isn't blocked waiting for the HTTP response.
 
-For richer notes that include the file path, use a shell script:
+For richer notes that include the file path, parse `$TOOL_INPUT` (a JSON blob of the tool's inputs) with jq:
 
 ```json
 {
@@ -172,7 +172,7 @@ For richer notes that include the file path, use a shell script:
         "hooks": [
           {
             "type": "command",
-            "command": "scratchpad -s claude \"Modified $TOOL_INPUT_PATH\"",
+            "command": "scratchpad -s claude \"Modified $(echo \"$TOOL_INPUT\" | jq -r '.path // \"unknown file\"')\"",
             "async": true
           }
         ]
@@ -181,6 +181,8 @@ For richer notes that include the file path, use a shell script:
   }
 }
 ```
+
+`$TOOL_INPUT` contains the raw JSON input to the tool (e.g. `{"path": "src/foo.py", ...}`). The `jq -r '.path // "unknown file"'` extracts the file path with a fallback. Requires jq; omit the subshell and use a static string if jq is unavailable.
 
 ## Data model
 
