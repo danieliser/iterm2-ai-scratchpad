@@ -412,6 +412,8 @@ function connectSSE() {
     renderNotes();
   });
 
+  es.addEventListener('notes_updated', () => loadNotes());
+
   es.onerror = () => {
     status.textContent = 'disconnected';
     status.className = 'disconnected';
