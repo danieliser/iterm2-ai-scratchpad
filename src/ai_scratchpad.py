@@ -259,6 +259,10 @@ async def handle_get_session(request: web.Request) -> web.Response:
     ))
 
 
+async def _handle_favicon(_request: web.Request) -> web.Response:
+    return web.Response(status=204)
+
+
 async def handle_health(request: web.Request) -> web.Response:
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
     return cors(web.Response(
@@ -431,6 +435,36 @@ def build_html() -> str:
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
+  /* Progress bars */
+  .widget-progress { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .widget-progress-bar { flex: 1; height: 6px; background: #1e1e1e; border-radius: 3px; overflow: hidden; }
+  .widget-progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+  .widget-progress-label { font-size: 10px; color: #808080; min-width: 32px; text-align: right; }
+  /* Status badges */
+  .widget-badge { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 2px; }
+  .widget-badge-success { background: #1a3a1a; color: #4ec94e; border: 1px solid #2d5a2d; }
+  .widget-badge-warning { background: #3a3520; color: #e0c040; border: 1px solid #5a5030; }
+  .widget-badge-error   { background: #3a1a1a; color: #f44747; border: 1px solid #5a2d2d; }
+  .widget-badge-info    { background: #1a2a3a; color: #569cd6; border: 1px solid #2d4a5a; }
+  /* Collapsible details */
+  .widget-details { margin: 4px 0; border: 1px solid #3c3c3c; border-radius: 4px; overflow: hidden; }
+  .widget-details-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: #1e1e1e; cursor: pointer; font-size: 11px; color: #d4d4d4; user-select: none; width: 100%; border: none; text-align: left; }
+  .widget-details-toggle:hover { background: #252525; }
+  .widget-details-arrow { font-size: 8px; transition: transform 0.2s; color: #808080; }
+  .widget-details.open .widget-details-arrow { transform: rotate(90deg); }
+  .widget-details-body { padding: 6px 8px; display: none; border-top: 1px solid #3c3c3c; font-size: 11px; }
+  .widget-details.open .widget-details-body { display: block; }
+  /* Tables */
+  .widget-table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 11px; }
+  .widget-table th { text-align: left; padding: 3px 8px; border-bottom: 1px solid #569cd6; color: #9cdcfe; font-weight: 600; }
+  .widget-table td { padding: 3px 8px; border-bottom: 1px solid #2a2a2a; }
+  .widget-table tr:hover td { background: #1e1e1e; }
+  /* Sparkline charts */
+  .widget-chart { display: flex; align-items: flex-end; gap: 2px; margin: 4px 0; padding: 4px; background: #1e1e1e; border-radius: 4px; height: 48px; }
+  .widget-chart-bar { flex: 1; min-width: 4px; border-radius: 2px 2px 0 0; transition: height 0.3s ease; position: relative; }
+  .widget-chart-bar:hover { opacity: 0.8; }
+  .widget-chart-bar:hover::after { content: attr(data-val); position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #d4d4d4; background: #333; padding: 1px 4px; border-radius: 2px; white-space: nowrap; }
+  .widget-chart-label { display: flex; justify-content: space-between; font-size: 9px; color: #808080; margin-top: 2px; }
   #empty {
     color: #555;
     text-align: center;
@@ -442,7 +476,7 @@ def build_html() -> str:
 <body>
 <div id="header">
   <h1>AI Scratchpad</h1>
-  <span id="status">connecting\u2026</span>
+  <span id="status">connecting…</span>
   <button id="clear-btn" onclick="clearNotes()">Clear All</button>
 </div>
 <div id="notes"></div>
@@ -468,28 +502,89 @@ function esc(s) {
 }
 function renderMarkdown(raw) {
   let s = esc(raw);
+  // Widgets — process before markdown so bracket syntax survives escaping
+  s = renderWidgets(s);
   // Code blocks (``` ... ```)
-  s = s.replace(/```([\s\S]*?)```/g, (_, code) => '<pre>' + code.trim() + '</pre>');
+  s = s.replace(/```([\\s\\S]*?)```/g, (_, code) => '<pre>' + code.trim() + '</pre>');
   // Inline code
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
   // Bold
-  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/[*][*](.+?)[*][*]/g, '<strong>$1</strong>');
   // Italic
-  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/[*](.+?)[*]/g, '<em>$1</em>');
   // Headers (### only)
   s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   // Horizontal rule
   s = s.replace(/^---$/gm, '<hr>');
   // Unordered lists
   s = s.replace(/^- (.+)$/gm, '<li>$1</li>');
-  s = s.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>');
+  s = s.replace(/(<li>.*<\\/li>\\n?)+/g, m => '<ul>' + m + '</ul>');
+  // Markdown tables: |col|col|col|
+  s = s.replace(/(^[|].+[|]$\\n?)+/gm, function(block) {
+    const rows = block.trim().split('\\n').filter(r => r.trim());
+    if (rows.length < 2) return block;
+    const sep = rows[1];
+    if (!sep.match(/^[|][\\s-:|]+[|]$/)) return block;
+    const parseRow = r => r.split('|').slice(1, -1).map(c => c.trim());
+    const headers = parseRow(rows[0]);
+    let html = '<table class="widget-table"><thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>';
+    for (let i = 2; i < rows.length; i++) {
+      const cells = parseRow(rows[i]);
+      html += '<tr>' + cells.map(c => '<td>' + c + '</td>').join('') + '</tr>';
+    }
+    return html + '</tbody></table>';
+  });
   // Paragraphs (double newline)
-  s = s.replace(/\n\n/g, '</p><p>');
+  s = s.replace(/\\n\\n/g, '</p><p>');
   s = '<p>' + s + '</p>';
-  // Single newlines to <br> (but not inside pre/ul)
-  s = s.replace(/([^>])\n([^<])/g, '$1<br>$2');
+  // Single newlines to <br> (but not inside pre/ul/table)
+  s = s.replace(/([^>])\\n([^<])/g, '$1<br>$2');
   // Clean up empty paragraphs
-  s = s.replace(/<p>\s*<\/p>/g, '');
+  s = s.replace(/<p>\\s*<\\/p>/g, '');
+  return s;
+}
+
+let _widgetId = 0;
+function renderWidgets(s) {
+  // Progress bars: [progress:75] or [progress:75:Building...]
+  s = s.replace(/\\[progress:(\\d+)(?::([^\\]]*))?\\]/g, function(_, val, label) {
+    const v = Math.min(100, Math.max(0, parseInt(val)));
+    const color = v >= 80 ? '#4ec94e' : v >= 50 ? '#e0c040' : v >= 25 ? '#569cd6' : '#f44747';
+    const lbl = label || '';
+    return '<div class="widget-progress">' +
+      (lbl ? '<span style="font-size:10px;color:#d4d4d4">' + lbl + '</span>' : '') +
+      '<div class="widget-progress-bar"><div class="widget-progress-fill" style="width:' + v + '%;background:' + color + '"></div></div>' +
+      '<span class="widget-progress-label">' + v + '%</span></div>';
+  });
+  // Status badges: [status:success], [status:error:Deploy failed]
+  s = s.replace(/\\[status:(success|warning|error|info)(?::([^\\]]*))?\\]/g, function(_, type, label) {
+    const text = label || type;
+    return '<span class="widget-badge widget-badge-' + type + '">' + text + '</span>';
+  });
+  // Sparkline charts: [chart:10,45,30,80,60] or [chart:10,45,30:Requests/s]
+  s = s.replace(/\\[chart:([\\d,]+)(?::([^\\]]*))?\\]/g, function(_, data, label) {
+    const vals = data.split(',').map(Number);
+    const max = Math.max(...vals);
+    const id = 'chart-' + (++_widgetId);
+    const colors = ['#569cd6', '#4ec94e', '#e0c040', '#c586c0', '#ce9178', '#9cdcfe'];
+    let bars = '';
+    vals.forEach((v, i) => {
+      const h = max > 0 ? Math.round((v / max) * 36) : 0;
+      const c = colors[i % colors.length];
+      bars += '<div class="widget-chart-bar" style="height:' + h + 'px;background:' + c + '" data-val="' + v + '"></div>';
+    });
+    let html = '<div class="widget-chart" id="' + id + '">' + bars + '</div>';
+    if (label) html += '<div class="widget-chart-label"><span>' + label + '</span></div>';
+    return html;
+  });
+  // Collapsible details: [details:Title]content[/details]
+  s = s.replace(/\\[details:([^\\]]+)\\]([\\s\\S]*?)\\[\\/details\\]/g, function(_, title, body) {
+    const id = 'details-' + (++_widgetId);
+    return '<div class="widget-details" id="' + id + '">' +
+      '<button class="widget-details-toggle" onclick="this.parentElement.classList.toggle(&quot;open&quot;)">' +
+      '<span class="widget-details-arrow">&#9654;</span>' + title + '</button>' +
+      '<div class="widget-details-body">' + body.trim() + '</div></div>';
+  });
   return s;
 }
 
@@ -628,6 +723,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/session", handle_get_session)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)
+    app.router.add_get("/favicon.ico", _handle_favicon)
     return app
 
 
