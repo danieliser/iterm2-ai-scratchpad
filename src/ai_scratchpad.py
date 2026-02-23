@@ -388,8 +388,48 @@ def build_html() -> str:
   .note-text {
     color: #d4d4d4;
     line-height: 1.5;
-    white-space: pre-wrap;
     word-break: break-word;
+  }
+  .note-text code {
+    background: #1e1e1e;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #ce9178;
+  }
+  .note-text pre {
+    background: #1e1e1e;
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin: 4px 0;
+    overflow-x: auto;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #d4d4d4;
+    white-space: pre;
+  }
+  .note-text strong { color: #dcdcaa; font-weight: 600; }
+  .note-text em { color: #9cdcfe; font-style: italic; }
+  .note-text ul, .note-text ol {
+    margin: 4px 0 4px 18px;
+    padding: 0;
+  }
+  .note-text li { margin: 2px 0; }
+  .note-text p { margin: 3px 0; }
+  .note-text hr {
+    border: none;
+    border-top: 1px solid #3c3c3c;
+    margin: 6px 0;
+  }
+  .note-text h3 {
+    font-size: 11px;
+    color: #9cdcfe;
+    font-weight: 600;
+    margin: 6px 0 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
   #empty {
     color: #555;
@@ -420,6 +460,37 @@ function formatTime(isoStr) {
   if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
   if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
   return d.toLocaleDateString();
+}
+
+// Minimal markdown renderer — escapes HTML first, then applies formatting
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderMarkdown(raw) {
+  let s = esc(raw);
+  // Code blocks (``` ... ```)
+  s = s.replace(/```([\s\S]*?)```/g, (_, code) => '<pre>' + code.trim() + '</pre>');
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Headers (### only)
+  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  // Horizontal rule
+  s = s.replace(/^---$/gm, '<hr>');
+  // Unordered lists
+  s = s.replace(/^- (.+)$/gm, '<li>$1</li>');
+  s = s.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>');
+  // Paragraphs (double newline)
+  s = s.replace(/\n\n/g, '</p><p>');
+  s = '<p>' + s + '</p>';
+  // Single newlines to <br> (but not inside pre/ul)
+  s = s.replace(/([^>])\n([^<])/g, '$1<br>$2');
+  // Clean up empty paragraphs
+  s = s.replace(/<p>\s*<\/p>/g, '');
+  return s;
 }
 
 function renderNotes() {
@@ -458,7 +529,8 @@ function renderNotes() {
 
     const text = document.createElement('div');
     text.className = 'note-text';
-    text.textContent = note.text;
+    // Safe: renderMarkdown() escapes all HTML before applying formatting
+    text.innerHTML = renderMarkdown(note.text);
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'copy-btn';

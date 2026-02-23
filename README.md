@@ -182,6 +182,115 @@ You can also use the `scratchpad` CLI instead of a raw curl command:
 }
 ```
 
+## Multi-Terminal Behavior
+
+The scratchpad server runs as a **single process** on `localhost:9999`. Multiple iTerm2 windows, tabs, and split panes all connect to the same server.
+
+**Session isolation:** In iTerm2 AutoLaunch mode, each terminal session gets its own note stream identified by the session UUID. When you switch tabs, the toolbelt panel automatically shows notes for the active session. The server tracks the active session via iTerm2's `LayoutChangeMonitor`.
+
+**Standalone mode:** Without iTerm2 integration (e.g., during development), all terminals share a single `"default"` session. Notes from any source appear in one stream.
+
+**What this means in practice:**
+- You can have Claude Code running in Tab 1 and a build script in Tab 2 — each gets its own notes
+- The toolbelt sidebar updates live when you switch between tabs
+- The CLI tool (`scratchpad`) and HTTP API always post to whatever session is currently active
+- To post to a specific session: `curl "http://localhost:9999/api/notes?session_id=<uuid>"`
+- To read another session's notes: `curl "http://localhost:9999/api/notes?session_id=<uuid>"`
+
+**Multiple iTerm2 windows:** All windows share the same server. The active session is whichever session most recently gained focus across all windows.
+
+## Rich Note Formatting
+
+Notes support basic markdown-style formatting:
+
+- `**bold**` → **bold**
+- `*italic*` → *italic*
+- `` `inline code` `` → inline code
+- Triple backtick code blocks
+- `### headers`
+- `- bullet lists`
+- `---` horizontal rules
+- Double newlines for paragraphs
+
+All content is HTML-escaped before formatting is applied — no XSS risk.
+
+## Quick Setup (Copy-Paste Later)
+
+If you want to set this up later after a restart, here's the condensed version:
+
+```bash
+# 1. Kill any stale server
+lsof -i :9999 -P -n | awk 'NR>1{print $2}' | xargs kill 2>/dev/null
+
+# 2. Start standalone (no iTerm2 integration)
+cd ~/Projects/iterm2-ai-scratchpad
+python3 src/ai_scratchpad.py &
+
+# 3. Open the UI
+open http://localhost:9999/
+
+# 4. Post a test note
+bin/scratchpad "Server is running"
+
+# 5. Link CLI to PATH (one-time)
+ln -sf "$(pwd)/bin/scratchpad" ~/dotfiles/bin/scratchpad
+```
+
+### Full iTerm2 Setup (one-time)
+
+```bash
+# 1. Enable Python API: iTerm2 → Settings → General → Magic → Enable Python API
+
+# 2. Create AutoLaunch script directory
+mkdir -p ~/Library/Application\ Support/iTerm2/Scripts/AutoLaunch
+
+# 3. Copy the server script
+cp src/ai_scratchpad.py \
+   ~/Library/Application\ Support/iTerm2/Scripts/AutoLaunch/ai_scratchpad.py
+
+# 4. Install deps in system Python (or iTerm2's Full Environment Python)
+pip3 install aiohttp watchdog
+
+# 5. Restart iTerm2 — script auto-launches
+
+# 6. Show toolbelt: View → Show Toolbelt
+# 7. Enable panel: right-click toolbelt → check "AI Scratchpad"
+```
+
+### Hook Setup for Claude Code (one-time)
+
+Add to `~/.claude/settings.json` for all projects:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scratchpad -s claude 'Modified a file'",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scratchpad -s claude 'Turn complete'",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ## Data model
 
 Each note is a JSON object:
