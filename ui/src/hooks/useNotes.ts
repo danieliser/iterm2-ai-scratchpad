@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Note } from "../types";
-import { fetchNotes, clearAllNotes, updateNoteStatus } from "../lib/api";
+import { fetchNotes, clearAllNotes, updateNoteStatus, fetchPrefs, savePrefs } from "../lib/api";
 
-const PINNED_KEY = "scratchpad_pinned";
-const FILTER_KEY = "scratchpad_filter";
-const SORT_KEY = "scratchpad_sort";
+export type NoteScope = "all" | "tab";
 
 export type FilterState = {
   source: string;
-  status: "active" | "done" | "all";
   searchText: string;
 };
 
@@ -21,67 +18,77 @@ interface NoteWithStatus extends Note {
   status?: "active" | "done";
 }
 
-function loadPinned(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(PINNED_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function loadFilter(): FilterState {
-  try {
-    return JSON.parse(localStorage.getItem(FILTER_KEY) || "null") || {
-      source: "all",
-      status: "all",
-      searchText: "",
-    };
-  } catch {
-    return { source: "all", status: "all", searchText: "" };
-  }
-}
-
-function loadSort(): SortOption {
-  try {
-    return JSON.parse(localStorage.getItem(SORT_KEY) || "null") || {
-      field: "timestamp",
-      order: "desc",
-    };
-  } catch {
-    return { field: "timestamp", order: "desc" };
-  }
-}
+const DEFAULT_FILTER: FilterState = { source: "all", searchText: "" };
+const DEFAULT_SORT: SortOption = { field: "timestamp", order: "desc" };
 
 export function useNotes() {
   const [notes, setNotes] = useState<NoteWithStatus[]>([]);
-  const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinned);
-  const [filter, setFilter] = useState<FilterState>(loadFilter);
-  const [sort, setSort] = useState<SortOption>(loadSort);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
+  const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
+  const [scope, setScope] = useState<NoteScope>("all");
+  const [sessionId, setSessionId] = useState("");
+  const [showDismissed, setShowDismissed] = useState(true);
+  const prefsLoaded = useRef(false);
+
+  // Load prefs from server on mount
+  useEffect(() => {
+    fetchPrefs().then((prefs) => {
+      setScope((prefs.scope as NoteScope) || "all");
+      setPinnedIds(prefs.pinned || []);
+      if (prefs.filter) setFilter({ ...DEFAULT_FILTER, ...prefs.filter } as FilterState);
+      if (prefs.sort) setSort({ ...DEFAULT_SORT, ...prefs.sort } as SortOption);
+      if (prefs.showDismissed !== undefined) setShowDismissed(prefs.showDismissed);
+      prefsLoaded.current = true;
+    });
+  }, []);
+
+  // Debounced save to server — fire-and-forget
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const persistPrefs = useCallback((partial: Record<string, unknown>) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => savePrefs(partial), 300);
+  }, []);
 
   const updateFilter = useCallback((newFilter: Partial<FilterState>) => {
     setFilter((prev) => {
       const next = { ...prev, ...newFilter };
-      localStorage.setItem(FILTER_KEY, JSON.stringify(next));
+      persistPrefs({ filter: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
 
   const updateSort = useCallback((newSort: Partial<SortOption>) => {
     setSort((prev) => {
       const next = { ...prev, ...newSort };
-      localStorage.setItem(SORT_KEY, JSON.stringify(next));
+      persistPrefs({ sort: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
+
+  const updateScope = useCallback((s: NoteScope) => {
+    setScope(s);
+    persistPrefs({ scope: s });
+  }, [persistPrefs]);
+
+  const toggleShowDismissed = useCallback(() => {
+    setShowDismissed((prev) => {
+      const next = !prev;
+      persistPrefs({ showDismissed: next });
+      return next;
+    });
+  }, [persistPrefs]);
 
   const load = useCallback(async () => {
     try {
-      const loaded = await fetchNotes();
-      setNotes(loaded);
+      const session = scope === "tab" ? "current" : undefined;
+      const result = await fetchNotes(session);
+      setNotes(result.notes);
+      setSessionId(result.session_id);
     } catch (e) {
       console.error("Failed to load notes", e);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     load();
@@ -101,10 +108,10 @@ export function useNotes() {
       const next = prev.includes(id)
         ? prev.filter((p) => p !== id)
         : [...prev, id];
-      localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+      persistPrefs({ pinned: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
 
   const toggleDone = useCallback((id: string) => {
     // Optimistic update
@@ -124,28 +131,35 @@ export function useNotes() {
   // Derived: unique sources for filter bar
   const sources = Array.from(new Set(notes.map((n) => n.source || "unknown")));
 
-  // Apply filters with AND logic: source AND status AND text search
-  let filtered = notes;
+  // Split active vs dismissed
+  const activeNotes = notes.filter((n) => (n.status || "active") !== "done");
+  const dismissedNotes = notes.filter((n) => n.status === "done");
 
+  // Combine: active notes first, then dismissed if shown
+  let visible = showDismissed ? [...activeNotes, ...dismissedNotes] : activeNotes;
+
+  // Apply filters: source AND text search
   if (filter.source !== "all") {
-    filtered = filtered.filter((n) => (n.source || "unknown") === filter.source);
-  }
-
-  if (filter.status !== "all") {
-    filtered = filtered.filter((n) => (n.status || "active") === filter.status);
+    visible = visible.filter((n) => (n.source || "unknown") === filter.source);
   }
 
   if (filter.searchText) {
     const query = filter.searchText.toLowerCase();
-    filtered = filtered.filter(
+    visible = visible.filter(
       (n) =>
         n.text.toLowerCase().includes(query) ||
         (n.source || "unknown").toLowerCase().includes(query),
     );
   }
 
-  // Sort: primary by sort option, but pinned notes always float to top
-  const sorted = [...filtered].sort((a, b) => {
+  // Sort: pinned float to top, then by sort option
+  const sorted = [...visible].sort((a, b) => {
+    // Dismissed always sink to bottom (after active)
+    const aDone = a.status === "done" ? 1 : 0;
+    const bDone = b.status === "done" ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+
+    // Pinned float to top within their group
     const ap = pinnedIds.includes(a.id) ? 1 : 0;
     const bp = pinnedIds.includes(b.id) ? 1 : 0;
     if (ap !== bp) return bp - ap;
@@ -171,10 +185,16 @@ export function useNotes() {
     updateFilter,
     sort,
     updateSort,
+    scope,
+    updateScope,
+    sessionId,
     addNote,
     clearNotes,
     togglePin,
     toggleDone,
     reload: load,
+    showDismissed,
+    toggleShowDismissed,
+    dismissedCount: dismissedNotes.length,
   };
 }

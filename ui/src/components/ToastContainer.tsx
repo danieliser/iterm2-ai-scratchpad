@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import type { Toast } from "../hooks/useToast";
 
 interface Props {
@@ -5,15 +6,22 @@ interface Props {
 }
 
 export function ToastContainer({ toasts }: Props) {
-  if (toasts.length === 0) return null;
-
   return (
     <div className="toast-container" role="status" aria-live="polite">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast${t.type ? ` ${t.type}` : ""}`}>
-          {t.text}
-        </div>
-      ))}
+      <AnimatePresence>
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            className={`toast${t.type ? ` ${t.type}` : ""}`}
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          >
+            {t.text}
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import type { TodoSession, TaskTeam, TodoItem, TaskItem } from "../types";
 
 interface Props {
@@ -38,6 +39,21 @@ function ProgressSummary({ items }: { items: { status: string }[] }) {
   );
 }
 
+function PanelBody({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      className="todo-panel-body"
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      style={{ overflow: "hidden" }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 function SessionPanel({ session }: { session: TodoSession }) {
   const [open, setOpen] = useState(session.has_active);
   const label = session.summary || `Session ${session.session_id.slice(0, 8)}`;
@@ -53,23 +69,25 @@ function SessionPanel({ session }: { session: TodoSession }) {
         <span className="todo-panel-title" title={session.session_id}>{label}</span>
         <ProgressSummary items={session.items} />
       </button>
-      {open && (
-        <div className="todo-panel-body">
-          {session.items.map((item: TodoItem, i: number) => (
-            <div
-              key={item.id || i}
-              className={`todo-item${item.status === "completed" ? " done" : ""}${item.status === "in_progress" ? " active" : ""}`}
-            >
-              <StatusIcon status={item.status} />
-              <span className="todo-item-text">
-                {item.status === "in_progress" && item.activeForm
-                  ? item.activeForm
-                  : item.content}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <PanelBody>
+            {session.items.map((item: TodoItem, i: number) => (
+              <div
+                key={item.id || i}
+                className={`todo-item${item.status === "completed" ? " done" : ""}${item.status === "in_progress" ? " active" : ""}`}
+              >
+                <StatusIcon status={item.status} />
+                <span className="todo-item-text">
+                  {item.status === "in_progress" && item.activeForm
+                    ? item.activeForm
+                    : item.content}
+                </span>
+              </div>
+            ))}
+          </PanelBody>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -91,28 +109,30 @@ function TeamPanel({ team }: { team: TaskTeam }) {
         <span className="todo-panel-title" title={team.team}>{label}</span>
         <ProgressSummary items={team.tasks} />
       </button>
-      {open && (
-        <div className="todo-panel-body">
-          {team.tasks.map((task: TaskItem) => (
-            <div
-              key={task.id}
-              className={`todo-item${task.status === "completed" ? " done" : ""}${task.status === "in_progress" ? " active" : ""}`}
-            >
-              <StatusIcon status={task.status} />
-              <span className="todo-item-text">
-                {task.status === "in_progress" && task.activeForm
-                  ? task.activeForm
-                  : task.subject}
-              </span>
-              {task.status !== "completed" && task.blockedBy && task.blockedBy.length > 0 && (
-                <span className="todo-blocked" title={`Blocked by: ${task.blockedBy.join(", ")}`}>
-                  &#128274;
+      <AnimatePresence>
+        {open && (
+          <PanelBody>
+            {team.tasks.map((task: TaskItem) => (
+              <div
+                key={task.id}
+                className={`todo-item${task.status === "completed" ? " done" : ""}${task.status === "in_progress" ? " active" : ""}`}
+              >
+                <StatusIcon status={task.status} />
+                <span className="todo-item-text">
+                  {task.status === "in_progress" && task.activeForm
+                    ? task.activeForm
+                    : task.subject}
                 </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                {task.status !== "completed" && task.blockedBy && task.blockedBy.length > 0 && (
+                  <span className="todo-blocked" title={`Blocked by: ${task.blockedBy.join(", ")}`}>
+                    &#128274;
+                  </span>
+                )}
+              </div>
+            ))}
+          </PanelBody>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

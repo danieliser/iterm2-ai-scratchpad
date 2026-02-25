@@ -1,12 +1,11 @@
 import { useCallback } from "react";
-import type { FilterState, SortOption } from "../hooks/useNotes";
+import { AnimatePresence, motion } from "motion/react";
 
 interface Props {
+  visible: boolean;
   sources: string[];
   activeSource: string;
   onSourceChange: (source: string) => void;
-  activeStatus: "active" | "done" | "all";
-  onStatusChange: (status: "active" | "done" | "all") => void;
   searchText: string;
   onSearchChange: (text: string) => void;
   sortField: "timestamp" | "source";
@@ -15,18 +14,16 @@ interface Props {
 }
 
 export function FilterBar({
+  visible,
   sources,
   activeSource,
   onSourceChange,
-  activeStatus,
-  onStatusChange,
   searchText,
   onSearchChange,
   sortField,
   sortOrder,
   onSortChange,
 }: Props) {
-  // Debounced search input
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       onSearchChange(e.target.value);
@@ -34,86 +31,66 @@ export function FilterBar({
     [onSearchChange],
   );
 
-  const handleSortClick = useCallback(
-    (field: "timestamp" | "source", order: "asc" | "desc") => {
-      onSortChange(field, order);
+  const sortValue =
+    sortField === "source"
+      ? "source"
+      : sortOrder === "asc"
+        ? "oldest"
+        : "newest";
+
+  const handleSortChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const v = e.target.value;
+      if (v === "newest") onSortChange("timestamp", "desc");
+      else if (v === "oldest") onSortChange("timestamp", "asc");
+      else if (v === "source") onSortChange("source", "asc");
     },
     [onSortChange],
   );
 
-  if (sources.length <= 1) return null;
-
-  const all = ["all", ...sources];
-
   return (
-    <div className="filters">
-      {/* Source filters */}
-      <div className="filter-group">
-        {all.map((src) => (
-          <button
-            key={src}
-            className={`filter-btn${activeSource === src ? " active" : ""}`}
-            onClick={() => onSourceChange(src)}
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          className="filters"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          style={{ overflow: "hidden" }}
+        >
+          <input
+            type="text"
+            className="filter-search"
+            placeholder="Search..."
+            value={searchText}
+            onChange={handleSearchChange}
+          />
+          {sources.length > 1 && (
+            <select
+              className="filter-select"
+              value={activeSource}
+              onChange={(e) => onSourceChange(e.target.value)}
+            >
+              <option value="all">All sources</option>
+              {sources.map((src) => (
+                <option key={src} value={src}>
+                  {src}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            className="filter-select"
+            value={sortValue}
+            onChange={handleSortChange}
           >
-            {src}
-          </button>
-        ))}
-      </div>
-
-      {/* Status filters */}
-      <div className="filter-group">
-        <button
-          className={`filter-btn${activeStatus === "active" ? " active" : ""}`}
-          onClick={() => onStatusChange("active")}
-        >
-          Active
-        </button>
-        <button
-          className={`filter-btn${activeStatus === "done" ? " active" : ""}`}
-          onClick={() => onStatusChange("done")}
-        >
-          Done
-        </button>
-        <button
-          className={`filter-btn${activeStatus === "all" ? " active" : ""}`}
-          onClick={() => onStatusChange("all")}
-        >
-          All
-        </button>
-      </div>
-
-      {/* Search input */}
-      <div className="filter-group">
-        <input
-          type="text"
-          className="filter-search"
-          placeholder="Search notes..."
-          value={searchText}
-          onChange={handleSearchChange}
-        />
-      </div>
-
-      {/* Sort options */}
-      <div className="filter-group">
-        <button
-          className={`filter-btn${sortField === "timestamp" && sortOrder === "desc" ? " active" : ""}`}
-          onClick={() => handleSortClick("timestamp", "desc")}
-        >
-          Newest
-        </button>
-        <button
-          className={`filter-btn${sortField === "timestamp" && sortOrder === "asc" ? " active" : ""}`}
-          onClick={() => handleSortClick("timestamp", "asc")}
-        >
-          Oldest
-        </button>
-        <button
-          className={`filter-btn${sortField === "source" ? " active" : ""}`}
-          onClick={() => handleSortClick("source", "asc")}
-        >
-          By Source
-        </button>
-      </div>
-    </div>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="source">By source</option>
+          </select>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

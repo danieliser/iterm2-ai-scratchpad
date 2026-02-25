@@ -7,7 +7,16 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://localhost:9999",
-      "/events": "http://localhost:9999",
+      "/events": {
+        target: "http://localhost:9999",
+        // SSE requires these to prevent buffering
+        configure: (proxy) => {
+          proxy.on("proxyRes", (proxyRes) => {
+            proxyRes.headers["cache-control"] = "no-cache";
+            proxyRes.headers["x-accel-buffering"] = "no";
+          });
+        },
+      },
       "/health": "http://localhost:9999",
     },
   },
