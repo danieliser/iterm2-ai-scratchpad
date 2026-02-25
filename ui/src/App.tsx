@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNotes } from "./hooks/useNotes";
 import { useSSE } from "./hooks/useSSE";
 import { useToast } from "./hooks/useToast";
 import { useTaskWatcher } from "./hooks/useTaskWatcher";
+import { useTheme } from "./hooks/useTheme";
 import { Header } from "./components/Header";
 import { FilterBar } from "./components/FilterBar";
 import { NoteList } from "./components/NoteList";
@@ -28,10 +29,27 @@ export default function App() {
     updateScope,
     sessionId,
     reload,
+    showDismissed,
+    toggleShowDismissed,
+    dismissedCount,
   } = useNotes();
 
   const { toasts, showToast } = useToast();
   const { sessions, teams, reload: reloadTodos } = useTaskWatcher();
+  const { theme, toggleTheme } = useTheme();
+
+  // Filter bar: hidden by default, auto-show when 2+ sources
+  const [filtersManuallyToggled, setFiltersManuallyToggled] = useState(false);
+  const [filtersForceVisible, setFiltersForceVisible] = useState(false);
+
+  const filtersVisible = filtersManuallyToggled
+    ? filtersForceVisible
+    : sources.length > 1;
+
+  const handleToggleFilters = useCallback(() => {
+    setFiltersManuallyToggled(true);
+    setFiltersForceVisible((prev) => !prev);
+  }, []);
 
   const onNoteAdded = useCallback(
     (note: Note) => {
@@ -72,7 +90,7 @@ export default function App() {
   const emptyMessage =
     allNotes.length === 0
       ? "No notes yet. AI agents will post here."
-      : `No notes matching filters`;
+      : "No notes matching filters";
 
   return (
     <>
@@ -85,14 +103,17 @@ export default function App() {
         sessionId={sessionId}
         noteCount={notes.length}
         totalCount={allNotes.length}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        filtersVisible={filtersVisible}
+        onToggleFilters={handleToggleFilters}
       />
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
+        visible={filtersVisible}
         sources={sources}
         activeSource={filter.source}
         onSourceChange={(source) => updateFilter({ source })}
-        activeStatus={filter.status}
-        onStatusChange={(status) => updateFilter({ status })}
         searchText={filter.searchText}
         onSearchChange={(searchText) => updateFilter({ searchText })}
         sortField={sort.field}
@@ -105,6 +126,9 @@ export default function App() {
         onTogglePin={togglePin}
         onToggleDone={toggleDone}
         emptyMessage={emptyMessage}
+        dismissedCount={dismissedCount}
+        showDismissed={showDismissed}
+        onToggleShowDismissed={toggleShowDismissed}
       />
     </>
   );

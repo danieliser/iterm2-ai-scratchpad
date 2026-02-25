@@ -1,4 +1,5 @@
 import type { NoteScope } from "../hooks/useNotes";
+import type { Theme } from "../hooks/useTheme";
 
 interface Props {
   connected: boolean;
@@ -8,6 +9,10 @@ interface Props {
   sessionId: string;
   noteCount: number;
   totalCount: number;
+  theme: Theme;
+  onToggleTheme: () => void;
+  filtersVisible: boolean;
+  onToggleFilters: () => void;
 }
 
 export function Header({
@@ -18,15 +23,34 @@ export function Header({
   sessionId,
   noteCount,
   totalCount,
+  theme,
+  onToggleTheme,
+  filtersVisible,
+  onToggleFilters,
 }: Props) {
   const sessionLabel = sessionId && sessionId !== "default"
-    ? sessionId.slice(0, 8)
+    ? sessionId.slice(0, 7)
     : "default";
 
   return (
-    <div className="header">
-      <div className="header-top">
-        <h1>AI Scratchpad</h1>
+    <div className="header-group">
+      {/* Title bar */}
+      <div className="title-bar">
+        <span className="title-text">AI Scratchpad</span>
+        <div className="title-actions">
+          <button
+            className="icon-btn"
+            onClick={onToggleTheme}
+            title={`Theme: ${theme}`}
+            aria-label="Toggle theme"
+          >
+            {theme === "cockpit" ? "◐" : "◑"}
+          </button>
+        </div>
+      </div>
+
+      {/* Toolbar row */}
+      <div className="toolbar">
         <div className="scope-toggle">
           <button
             className={`scope-btn${scope === "all" ? " active" : ""}`}
@@ -43,20 +67,28 @@ export function Header({
             Active
           </button>
         </div>
+        <div className="toolbar-meta">
+          <span className="meta-session" title={sessionId}>
+            {scope === "tab" ? sessionLabel : "all sessions"}
+          </span>
+          <span className="meta-count">
+            {noteCount}{noteCount !== totalCount ? ` / ${totalCount}` : ""} notes
+          </span>
+        </div>
         <span className={`status${connected ? "" : " disconnected"}`}>
-          {connected ? "live" : "disconnected"}
+          {connected ? "live" : "off"}
         </span>
-        <button className="btn" onClick={onClear}>
-          Clear All
+        <button
+          className={`icon-btn${filtersVisible ? " active" : ""}`}
+          onClick={onToggleFilters}
+          title={filtersVisible ? "Hide filters" : "Show filters"}
+          aria-label="Toggle filters"
+        >
+          ⚙
         </button>
-      </div>
-      <div className="header-meta">
-        <span className="meta-session" title={sessionId}>
-          {scope === "tab" ? `session: ${sessionLabel}` : "all sessions"}
-        </span>
-        <span className="meta-count">
-          {noteCount}{noteCount !== totalCount ? ` / ${totalCount}` : ""} notes
-        </span>
+        <button className="btn" onClick={onClear}>
+          Clear
+        </button>
       </div>
     </div>
   );
