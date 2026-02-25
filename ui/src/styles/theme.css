@@ -70,12 +70,31 @@ body {
 /* Header */
 .header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) 10px;
+  flex-direction: column;
+  padding: var(--space-2) 10px var(--space-1);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 2px;
+}
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.header-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.meta-session {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.meta-count {
+  color: var(--text-disabled);
 }
 .header h1 {
   font-size: 11px;

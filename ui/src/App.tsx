@@ -26,6 +26,7 @@ export default function App() {
     toggleDone,
     scope,
     updateScope,
+    sessionId,
     reload,
   } = useNotes();
 
@@ -76,7 +77,15 @@ export default function App() {
   return (
     <>
       <ToastContainer toasts={toasts} />
-      <Header connected={connected} onClear={handleClear} scope={scope} onScopeChange={updateScope} />
+      <Header
+        connected={connected}
+        onClear={handleClear}
+        scope={scope}
+        onScopeChange={updateScope}
+        sessionId={sessionId}
+        noteCount={notes.length}
+        totalCount={allNotes.length}
+      />
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
         sources={sources}
