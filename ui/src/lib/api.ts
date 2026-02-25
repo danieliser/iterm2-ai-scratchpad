@@ -90,6 +90,34 @@ export async function savePrefs(prefs: Partial<Prefs>): Promise<void> {
   }
 }
 
+export async function checkHealth(): Promise<{ iterm2: boolean }> {
+  try {
+    const r = await fetch(`${API}/health`);
+    if (!r.ok) return { iterm2: false };
+    return r.json();
+  } catch {
+    return { iterm2: false };
+  }
+}
+
+/** Detect if we're running inside iTerm2's WKWebView toolbelt (narrow, no browser chrome). */
+export function isInToolbelt(): boolean {
+  // WKWebView in toolbelt is narrow and doesn't have typical browser navigation
+  return window.innerWidth < 600 && !window.navigator.userAgent.includes("Chrome");
+}
+
+export async function openInBrowser(): Promise<void> {
+  try {
+    await fetch(`${API}/api/exec`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "open http://localhost:9999", timeout: 5 }),
+    });
+  } catch (e) {
+    console.error("openInBrowser failed:", e);
+  }
+}
+
 export async function activateSession(sessionId: string): Promise<boolean> {
   try {
     const r = await fetch(`${API}/api/sessions/${encodeURIComponent(sessionId)}/activate`, {

@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import type { NoteScope } from "../hooks/useNotes";
 import type { Theme } from "../hooks/useTheme";
+import { openInBrowser, isInToolbelt } from "../lib/api";
 
 interface Props {
   connected: boolean;
@@ -28,6 +30,8 @@ export function Header({
   filtersVisible,
   onToggleFilters,
 }: Props) {
+  const [inToolbelt, setInToolbelt] = useState(true);
+  useEffect(() => { setInToolbelt(isInToolbelt()); }, []);
   const sessionLabel = sessionId && sessionId !== "default"
     ? sessionId.slice(0, 7)
     : "default";
@@ -38,14 +42,32 @@ export function Header({
       <div className="title-bar">
         <span className="title-text">AI Scratchpad</span>
         <div className="title-actions">
-          <button
-            className="icon-btn"
-            onClick={() => window.open("http://localhost:9999", "_blank")}
-            title="Open in browser"
-            aria-label="Open in browser"
-          >
-            ↗
-          </button>
+          {inToolbelt ? (
+            <button
+              className="icon-btn"
+              onClick={openInBrowser}
+              title="Open in browser"
+              aria-label="Open in browser"
+            >
+              ↗
+            </button>
+          ) : (
+            <button
+              className="icon-btn"
+              onClick={() => {
+                // Use osascript via exec endpoint to activate iTerm2
+                fetch("/api/exec", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ command: "open -a iTerm", timeout: 5 }),
+                });
+              }}
+              title="Focus iTerm2"
+              aria-label="Focus iTerm2"
+            >
+              ⌘
+            </button>
+          )}
           <button
             className="icon-btn"
             onClick={onToggleTheme}

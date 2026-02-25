@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import type { Note } from "../types";
 import { formatTime } from "../lib/format";
 import { parseNoteContent } from "../lib/markdown";
-import { activateSession } from "../lib/api";
+import { activateSession, isInToolbelt } from "../lib/api";
 
 interface NoteWithStatus extends Note {
   status?: "active" | "done";
@@ -33,10 +33,18 @@ function NoteCardComponent({
     setTimeout(() => setCopied(false), 1500);
   }, [note.text]);
 
-  const handleSourceClick = useCallback((e: React.MouseEvent) => {
+  const handleSourceClick = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (note.session_id && note.session_id !== "default") {
-      activateSession(note.session_id);
+      await activateSession(note.session_id);
+      // In browser, also focus iTerm2 after switching tabs
+      if (!isInToolbelt()) {
+        fetch("/api/exec", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: "open -a iTerm", timeout: 5 }),
+        });
+      }
     }
   }, [note.session_id]);
 
