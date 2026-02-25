@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] - 2026-02-25
+
+### Added
+
+- **MCP usage guidance** — the MCP server now includes full instructions for when/how to use the scratchpad, source labels, and the update workflow. Claude picks this up automatically — no CLAUDE.md configuration needed for end users.
+
+### Changed
+
+- Moved usage docs from project CLAUDE.md into MCP server `instructions` field for zero-config onboarding.
+
 ## [0.1.0] - 2026-02-25
 
 Initial release of AI Scratchpad for iTerm2.
