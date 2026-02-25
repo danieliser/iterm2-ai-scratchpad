@@ -498,8 +498,25 @@ async def _handle_favicon(_request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
+async def _get_session_info(session) -> dict:
+    """Get cwd, job, and git status for a single iTerm2 session object."""
+    cwd = await session.async_get_variable("path") or ""
+    job = await session.async_get_variable("jobName") or ""
+    git_info = await _get_git_status(cwd) if cwd else None
+    return {
+        "session_id": session.session_id or "",
+        "cwd": cwd,
+        "job": job,
+        "git": git_info,
+    }
+
+
 async def handle_get_session_status(request: web.Request) -> web.Response:
-    """Return live session info: cwd, foreground job, and git state."""
+    """Return live session info: cwd, foreground job, and git state.
+
+    ?scope=tab returns all panes in the active tab as a `panels` array.
+    Default returns the active session only.
+    """
     if not ITERM2_AVAILABLE:
         return cors(web.Response(
             status=501,
@@ -515,11 +532,28 @@ async def handle_get_session_status(request: web.Request) -> web.Response:
             text=json.dumps({"error": "iTerm2 connection not ready"}),
         ))
 
+    scope = request.query.get("scope", "panel")
+
     try:
         app = await _iterm2.async_get_app(connection)
-        session = app.current_terminal_window.current_tab.current_session
-        cwd = await session.async_get_variable("path")
-        job = await session.async_get_variable("jobName")
+        tab = app.current_terminal_window.current_tab
+
+        if scope == "tab":
+            panels = await asyncio.gather(
+                *[_get_session_info(s) for s in tab.sessions]
+            )
+            return cors(web.Response(
+                content_type="application/json",
+                text=json.dumps({"panels": list(panels)}),
+            ))
+
+        # Single-panel (default)
+        info = await _get_session_info(tab.current_session)
+        return cors(web.Response(
+            content_type="application/json",
+            text=json.dumps(info),
+        ))
+
     except Exception as exc:
         log.warning("Session status lookup failed: %s", exc)
         return cors(web.Response(
@@ -527,19 +561,6 @@ async def handle_get_session_status(request: web.Request) -> web.Response:
             content_type="application/json",
             text=json.dumps({"error": str(exc)}),
         ))
-
-    git_info = None
-    if cwd:
-        git_info = await _get_git_status(cwd)
-
-    return cors(web.Response(
-        content_type="application/json",
-        text=json.dumps({
-            "cwd": cwd or "",
-            "job": job or "",
-            "git": git_info,
-        }),
-    ))
 
 
 async def _get_git_status(cwd: str) -> dict | None:

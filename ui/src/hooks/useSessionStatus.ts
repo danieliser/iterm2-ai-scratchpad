@@ -8,10 +8,18 @@ export interface GitStatus {
   behind: number;
 }
 
-export interface SessionStatus {
+export interface PanelStatus {
+  session_id: string;
   cwd: string;
   job: string;
   git: GitStatus | null;
+}
+
+export interface SessionStatus {
+  /** All panels share the same cwd — show single unified view */
+  unified: boolean;
+  /** The panels in this tab (1 for panel scope, N for tab scope) */
+  panels: PanelStatus[];
 }
 
 const POLL_INTERVAL = 5000;
@@ -21,7 +29,7 @@ export function useSessionStatus(scope: NoteScope) {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
-    if (scope !== "panel") {
+    if (scope !== "panel" && scope !== "tab") {
       setStatus(null);
       return;
     }
@@ -30,12 +38,27 @@ export function useSessionStatus(scope: NoteScope) {
 
     const poll = async () => {
       try {
-        const r = await fetch("/api/session/status");
+        const queryScope = scope === "tab" ? "tab" : "panel";
+        const r = await fetch(`/api/session/status?scope=${queryScope}`);
         if (!r.ok) return;
         const data = await r.json();
-        if (!cancelled) setStatus(data);
+        if (cancelled) return;
+
+        let panels: PanelStatus[];
+        if (data.panels) {
+          panels = data.panels;
+        } else {
+          panels = [data];
+        }
+
+        // Unified if all panels share the same cwd
+        const cwds = new Set(panels.map((p) => p.cwd).filter(Boolean));
+        setStatus({
+          unified: cwds.size <= 1,
+          panels,
+        });
       } catch {
-        // silently ignore — server may not support this yet
+        // silently ignore
       }
     };
 

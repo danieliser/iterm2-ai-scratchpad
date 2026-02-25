@@ -113,7 +113,7 @@ export default function App() {
         filtersVisible={filtersVisible}
         onToggleFilters={handleToggleFilters}
       />
-      {scope === "panel" && <StatusBar status={sessionStatus} />}
+      {scope !== "all" && <StatusBar status={sessionStatus} />}
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
         visible={filtersVisible}
