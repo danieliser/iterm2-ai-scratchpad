@@ -7,10 +7,10 @@ Works with Claude Code out of the box via MCP. Also supports any tool that can m
 ## Install
 
 ```bash
-git clone https://github.com/danieliser/iterm2-ai-scratchpad.git
-cd iterm2-ai-scratchpad
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/danieliser/iterm2-ai-scratchpad/master/install.sh | bash
 ```
+
+That's it. Restart iTerm2, then **View → Show Toolbelt** and enable **AI Scratchpad**.
 
 The installer:
 - Detects your iTerm2 Python environment
@@ -19,7 +19,7 @@ The installer:
 - Registers the MCP server with Claude Code (if installed)
 - Links the optional `scratchpad` CLI tool
 
-After install, restart iTerm2, then **View → Show Toolbelt** and enable **AI Scratchpad**.
+Installs to `~/.local/share/ai-scratchpad`. Run it again to update.
 
 ### Requirements
 
