@@ -6,12 +6,16 @@ import logging
 from aiohttp import web
 
 from . import ITERM2_AVAILABLE, _iterm2, LOG_PATH
-from .storage import DEFAULT_SESSION, get_current_session_id, set_current_session_id, set_iterm2_connection
+from .storage import (
+    DEFAULT_SESSION, get_current_session_id, set_current_session_id,
+    get_current_tab_session_ids, set_current_tab_session_ids, set_iterm2_connection,
+)
 from .streaming import broadcast, start_watchdog, start_todo_watchdog, set_event_loop
 from .handlers import (
     handle_options, handle_get_ui, handle_post_note, handle_get_notes,
     handle_delete_notes, handle_put_note, handle_patch_note, handle_get_session,
-    handle_activate_session, handle_health, handle_sse, handle_run,
+    handle_activate_session, handle_get_session_status, handle_health,
+    handle_sse, handle_run,
     handle_get_todos, handle_get_prefs, handle_put_prefs, _handle_favicon,
 )
 
@@ -29,6 +33,7 @@ def build_app() -> web.Application:
     app.router.add_patch("/api/notes/{note_id}", handle_patch_note)
     app.router.add_get("/api/session", handle_get_session)
     app.router.add_post("/api/sessions/{session_id}/activate", handle_activate_session)
+    app.router.add_get("/api/session/status", handle_get_session_status)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)
     app.router.add_post("/api/exec", handle_run)
@@ -58,16 +63,22 @@ async def _session_monitor(connection) -> None:
         try:
             window = app.current_window
             if window is None:
+                set_current_tab_session_ids([])
                 return DEFAULT_SESSION
             tab = window.current_tab
             if tab is None:
+                set_current_tab_session_ids([])
                 return DEFAULT_SESSION
+            # Collect all session IDs in this tab (all panes/splits)
+            tab_sids = [s.session_id for s in tab.sessions if s.session_id]
+            set_current_tab_session_ids(tab_sids)
             session = tab.current_session
             if session is None:
                 return DEFAULT_SESSION
             return session.session_id or DEFAULT_SESSION
         except Exception as exc:
             log.warning("Session detection error: %s", exc)
+            set_current_tab_session_ids([])
             return DEFAULT_SESSION
 
     try:
@@ -86,7 +97,10 @@ async def _session_monitor(connection) -> None:
                     if new_id != get_current_session_id():
                         log.info("Session changed: %s -> %s", get_current_session_id(), new_id)
                         set_current_session_id(new_id)
-                        await broadcast("session_changed", {"session_id": new_id})
+                        await broadcast("session_changed", {
+                            "session_id": new_id,
+                            "tab_session_ids": get_current_tab_session_ids(),
+                        })
             except asyncio.CancelledError:
                 break
             except Exception as exc:

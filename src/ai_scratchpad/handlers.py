@@ -15,8 +15,8 @@ from aiohttp import web
 from .storage import (
     NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, DEFAULT_SESSION,
     get_current_session_id, get_start_time, get_session_summary,
-    get_iterm2_connection,
-    load_notes, save_notes, load_all_notes, append_note, update_note_in_file,
+    get_iterm2_connection, get_current_tab_session_ids,
+    load_notes, save_notes, load_all_notes, load_tab_notes, append_note, update_note_in_file,
     load_prefs, save_prefs,
 )
 from . import ITERM2_AVAILABLE, _iterm2
@@ -127,7 +127,13 @@ async def handle_get_notes(request: web.Request) -> web.Response:
     session = request.query.get("session", "")
     if session == "current":
         session = get_current_session_id()
-    if session:
+    if session == "current_tab":
+        tab_ids = get_current_tab_session_ids()
+        if tab_ids:
+            notes = await asyncio.to_thread(load_tab_notes, tab_ids)
+        else:
+            notes = await asyncio.to_thread(load_notes, get_current_session_id())
+    elif session:
         notes = await asyncio.to_thread(load_notes, session)
     else:
         notes = await asyncio.to_thread(load_all_notes)
@@ -137,6 +143,7 @@ async def handle_get_notes(request: web.Request) -> web.Response:
             "notes": notes,
             "count": len(notes),
             "session_id": get_current_session_id(),
+            "tab_session_ids": get_current_tab_session_ids(),
         }),
     ))
 
@@ -489,6 +496,105 @@ async def handle_put_prefs(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 async def _handle_favicon(_request: web.Request) -> web.Response:
     return web.Response(status=204)
+
+
+async def handle_get_session_status(request: web.Request) -> web.Response:
+    """Return live session info: cwd, foreground job, and git state."""
+    if not ITERM2_AVAILABLE:
+        return cors(web.Response(
+            status=501,
+            content_type="application/json",
+            text=json.dumps({"error": "iTerm2 not available"}),
+        ))
+
+    connection = get_iterm2_connection()
+    if not connection:
+        return cors(web.Response(
+            status=503,
+            content_type="application/json",
+            text=json.dumps({"error": "iTerm2 connection not ready"}),
+        ))
+
+    try:
+        app = await _iterm2.async_get_app(connection)
+        session = app.current_terminal_window.current_tab.current_session
+        cwd = await session.async_get_variable("path")
+        job = await session.async_get_variable("jobName")
+    except Exception as exc:
+        log.warning("Session status lookup failed: %s", exc)
+        return cors(web.Response(
+            status=503,
+            content_type="application/json",
+            text=json.dumps({"error": str(exc)}),
+        ))
+
+    git_info = None
+    if cwd:
+        git_info = await _get_git_status(cwd)
+
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({
+            "cwd": cwd or "",
+            "job": job or "",
+            "git": git_info,
+        }),
+    ))
+
+
+async def _get_git_status(cwd: str) -> dict | None:
+    """Run git commands in cwd to get branch, dirty count, ahead/behind.
+
+    Uses create_subprocess_exec (not shell) — all arguments are hardcoded
+    strings, no user input is interpolated.
+    """
+    try:
+        # Check if it's a git repo
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "--is-inside-work-tree",
+            cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+        if proc.returncode != 0:
+            return None
+
+        # Branch name
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "--abbrev-ref", "HEAD",
+            cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+        branch = stdout.decode().strip() if proc.returncode == 0 else ""
+
+        # Dirty file count
+        proc = await asyncio.create_subprocess_exec(
+            "git", "status", "--porcelain",
+            cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+        dirty = len([line for line in stdout.decode().splitlines() if line.strip()]) if proc.returncode == 0 else 0
+
+        # Ahead/behind upstream
+        ahead, behind = 0, 0
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-list", "--count", "--left-right", "HEAD...@{upstream}",
+            cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+        if proc.returncode == 0:
+            parts = stdout.decode().strip().split("\t")
+            if len(parts) == 2:
+                ahead, behind = int(parts[0]), int(parts[1])
+
+        return {
+            "branch": branch,
+            "dirty": dirty,
+            "ahead": ahead,
+            "behind": behind,
+        }
+    except (asyncio.TimeoutError, Exception) as exc:
+        log.warning("Git status check failed in %s: %s", cwd, exc)
+        return None
 
 
 async def handle_health(request: web.Request) -> web.Response:

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Note } from "../types";
 import { fetchNotes, clearAllNotes, updateNoteStatus, fetchPrefs, savePrefs } from "../lib/api";
 
-export type NoteScope = "all" | "tab";
+export type NoteScope = "all" | "tab" | "panel";
 
 export type FilterState = {
   source: string;
@@ -81,7 +81,7 @@ export function useNotes() {
 
   const load = useCallback(async () => {
     try {
-      const session = scope === "tab" ? "current" : undefined;
+      const session = scope === "tab" ? "current_tab" : scope === "panel" ? "current" : undefined;
       const result = await fetchNotes(session);
       setNotes(result.notes);
       setSessionId(result.session_id);

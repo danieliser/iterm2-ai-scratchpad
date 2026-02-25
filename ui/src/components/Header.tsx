@@ -104,14 +104,21 @@ export function Header({
           <button
             className={`scope-btn${scope === "tab" ? " active" : ""}`}
             onClick={() => onScopeChange("tab")}
-            title="Show notes from active session only"
+            title="Show notes from all panels in the active tab"
           >
-            Active
+            Tab
+          </button>
+          <button
+            className={`scope-btn${scope === "panel" ? " active" : ""}`}
+            onClick={() => onScopeChange("panel")}
+            title="Show notes from the active panel only"
+          >
+            Panel
           </button>
         </div>
         <div className="toolbar-meta">
           <span className="meta-session" title={sessionId}>
-            {scope === "tab" ? sessionLabel : "all sessions"}
+            {scope === "all" ? "all sessions" : scope === "panel" ? sessionLabel : "current tab"}
           </span>
           <span className="meta-count">
             {noteCount}{noteCount !== totalCount ? ` / ${totalCount}` : ""} notes

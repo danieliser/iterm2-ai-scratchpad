@@ -25,6 +25,9 @@ DEFAULT_SESSION = "default"
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
 _current_session_id: str = DEFAULT_SESSION
 
+# Active iTerm2 tab's session IDs — all panes/splits in the current tab
+_current_tab_session_ids: list[str] = []
+
 # iTerm2 connection reference — set by session monitor for tab activation
 _iterm2_connection = None
 
@@ -49,6 +52,27 @@ def get_current_session_id() -> str:
 def set_current_session_id(value: str) -> None:
     global _current_session_id
     _current_session_id = value
+
+
+def get_current_tab_session_ids() -> list[str]:
+    return _current_tab_session_ids
+
+
+def set_current_tab_session_ids(ids: list[str]) -> None:
+    global _current_tab_session_ids
+    _current_tab_session_ids = ids
+
+
+def load_tab_notes(session_ids: list[str], max_notes: int = 200) -> list:
+    """Load and merge notes from all sessions in a tab."""
+    all_notes = []
+    for sid in session_ids:
+        notes = load_notes(sid)
+        all_notes.extend(notes)
+    all_notes.sort(key=lambda n: n.get("timestamp", ""))
+    if len(all_notes) > max_notes:
+        all_notes = all_notes[-max_notes:]
+    return all_notes
 
 
 def get_iterm2_connection():
