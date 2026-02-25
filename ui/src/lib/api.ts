@@ -61,7 +61,7 @@ export async function updateNoteStatus(
 }
 
 export type Prefs = {
-  scope: "all" | "tab";
+  scope: "all" | "tab" | "panel";
   filter: { source: string; status: string; searchText: string };
   sort: { field: string; order: string };
   pinned: string[];

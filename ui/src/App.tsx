@@ -4,7 +4,9 @@ import { useSSE } from "./hooks/useSSE";
 import { useToast } from "./hooks/useToast";
 import { useTaskWatcher } from "./hooks/useTaskWatcher";
 import { useTheme } from "./hooks/useTheme";
+import { useSessionStatus } from "./hooks/useSessionStatus";
 import { Header } from "./components/Header";
+import { StatusBar } from "./components/StatusBar";
 import { FilterBar } from "./components/FilterBar";
 import { NoteList } from "./components/NoteList";
 import { TodoBoard } from "./components/TodoBoard";
@@ -37,6 +39,7 @@ export default function App() {
   const { toasts, showToast } = useToast();
   const { sessions, teams, reload: reloadTodos } = useTaskWatcher();
   const { style, scheme, cycleStyle, cycleScheme } = useTheme();
+  const sessionStatus = useSessionStatus(scope);
 
   // Filter bar: hidden by default, auto-show when 2+ sources
   const [filtersManuallyToggled, setFiltersManuallyToggled] = useState(false);
@@ -110,6 +113,7 @@ export default function App() {
         filtersVisible={filtersVisible}
         onToggleFilters={handleToggleFilters}
       />
+      {scope !== "all" && <StatusBar status={sessionStatus} />}
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
         visible={filtersVisible}
