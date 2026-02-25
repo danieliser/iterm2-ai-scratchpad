@@ -19,9 +19,12 @@ mcp = FastMCP(
 
 
 def _default_source() -> str:
-    """Derive a human-readable source from environment context."""
+    """Derive a human-readable source: project:session_prefix."""
     cwd = os.environ.get("PWD", os.getcwd())
-    return os.path.basename(cwd) or "agent"
+    project = os.path.basename(cwd) or "agent"
+    session = _iterm_session_id()
+    prefix = session[:7] if session else ""
+    return f"{project}:{prefix}" if prefix else project
 
 
 def _iterm_session_id() -> str:

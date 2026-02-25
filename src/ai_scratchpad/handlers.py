@@ -89,9 +89,15 @@ async def handle_post_note(request: web.Request) -> web.Response:
 
     source = body.get("source", "unknown")
     if source in ("agent", "unknown", ""):
-        prefix = session_id[:8] if session_id != DEFAULT_SESSION else "default"
+        prefix = session_id[:7] if session_id != DEFAULT_SESSION else ""
         subagent = body.get("metadata", {}).get("subagent_name", "")
-        source = f"{prefix}:{subagent}" if subagent else prefix
+        # Build source: "agent:session_prefix" or "agent:subagent:session_prefix"
+        parts = ["agent"]
+        if subagent:
+            parts.append(subagent)
+        if prefix:
+            parts.append(prefix)
+        source = ":".join(parts)
 
     note = {
         "id": str(uuid.uuid4()),
