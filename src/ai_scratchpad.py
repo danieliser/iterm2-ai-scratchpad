@@ -54,7 +54,135 @@ except ImportError:
 # Storage
 # ---------------------------------------------------------------------------
 NOTES_DIR = Path.home() / ".config" / "iterm2-scratchpad" / "notes" / "by-session"
+CLAUDE_TODOS_DIR = Path.home() / ".claude" / "todos"
+CLAUDE_TASKS_DIR = Path.home() / ".claude" / "tasks"
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+SUMMARY_CACHE_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "session-summaries.json"
 DEFAULT_SESSION = "default"
+
+# Session summary cache — maps session UUID prefix to first user message
+_summary_cache: dict = {}
+_summary_cache_loaded = False
+
+
+def _load_summary_cache() -> dict:
+    global _summary_cache, _summary_cache_loaded
+    if _summary_cache_loaded:
+        return _summary_cache
+    _summary_cache_loaded = True
+    if SUMMARY_CACHE_PATH.exists():
+        try:
+            _summary_cache = json.loads(SUMMARY_CACHE_PATH.read_text())
+        except Exception:
+            _summary_cache = {}
+    return _summary_cache
+
+
+def _save_summary_cache() -> None:
+    SUMMARY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SUMMARY_CACHE_PATH.write_text(json.dumps(_summary_cache, indent=2))
+
+
+def _extract_command_name(content: str) -> str:
+    """Extract slash command + args from a command-message user turn."""
+    import re
+    m = re.search(r"<command-name>/?([^<]+)</command-name>", content)
+    if not m:
+        return ""
+    cmd = m.group(1).strip()
+    args_m = re.search(r"<command-args>([^<]*)</command-args>", content)
+    args = args_m.group(1).strip() if args_m else ""
+    return f"/{cmd} {args}".strip()[:100] if args else f"/{cmd}"[:100]
+
+
+def _is_system_content(content: str) -> bool:
+    """Detect system-injected user messages (skill prompts, agent context)."""
+    stripped = content.lstrip()
+    # Command messages have XML tags
+    if stripped.startswith("<command-message>"):
+        return True
+    # Skill/agent preambles
+    if stripped.startswith(("Base directory", "You are ")):
+        return True
+    # Agent context blocks (markdown headers followed by agent instructions)
+    if "Your name is **" in content[:200] or "you are executing tasks" in content[:300].lower():
+        return True
+    # Empty messages (approval/continue)
+    if not stripped:
+        return True
+    return False
+
+
+def _extract_first_user_message(jsonl_path: Path) -> str:
+    """Read a JSONL transcript and return a human-readable summary."""
+    try:
+        user_count = 0
+        command_name = ""
+        with open(jsonl_path) as f:
+            for line in f:
+                d = json.loads(line)
+                if d.get("type") != "user" or "message" not in d:
+                    continue
+                user_count += 1
+                if user_count > 15:
+                    break
+                msg = d["message"]
+                content = ""
+                if isinstance(msg, dict):
+                    c = msg.get("content", "")
+                    if isinstance(c, list):
+                        for part in c:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                content = part["text"]
+                                break
+                    elif isinstance(c, str):
+                        content = c
+                elif isinstance(msg, str):
+                    content = msg
+
+                # On first message, check for slash command
+                if user_count == 1 and "<command-name>" in content:
+                    command_name = _extract_command_name(content)
+                    continue  # keep looking for real human text
+
+                if _is_system_content(content):
+                    continue
+
+                # Find first meaningful line
+                for raw_line in content.split("\n"):
+                    text = raw_line.strip().lstrip("#").strip()
+                    if text and len(text) > 5 and " " in text:
+                        return text[:100]
+
+        # Fallback to command name if no human text found
+        return command_name
+    except Exception:
+        return ""
+
+
+def get_session_summary(session_id: str) -> str:
+    """Get a human-readable summary for a session, using cache."""
+    cache = _load_summary_cache()
+    if session_id in cache:
+        return cache[session_id]
+
+    # Search across all project dirs for matching JSONL
+    if CLAUDE_PROJECTS_DIR.exists():
+        for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for jsonl in project_dir.glob(f"{session_id}*.jsonl"):
+                summary = _extract_first_user_message(jsonl)
+                if summary:
+                    _summary_cache[session_id] = summary
+                    _save_summary_cache()
+                    return summary
+
+    # Not found — cache empty string to avoid re-scanning
+    _summary_cache[session_id] = ""
+    _save_summary_cache()
+    return ""
+
 
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
 _current_session_id: str = DEFAULT_SESSION
@@ -157,6 +285,37 @@ if WATCHDOG_AVAILABLE:
                 )
 
 
+if WATCHDOG_AVAILABLE:
+    class _TodoFileHandler(FileSystemEventHandler):
+        """Watch ~/.claude/todos/ and ~/.claude/tasks/ for live task updates."""
+        def on_modified(self, event):
+            if not event.is_directory and event.src_path.endswith(".json"):
+                self._debounce(event.src_path)
+
+        def on_created(self, event):
+            self.on_modified(event)
+
+        def _debounce(self, path: str) -> None:
+            key = f"todo:{path}"
+            with _debounce_lock:
+                existing = _debounce_timers.get(key)
+                if existing:
+                    existing.cancel()
+                timer = threading.Timer(0.15, self._fire, args=(path,))
+                _debounce_timers[key] = timer
+            timer.start()
+
+        def _fire(self, path: str) -> None:
+            key = f"todo:{path}"
+            with _debounce_lock:
+                _debounce_timers.pop(key, None)
+            if _event_loop is not None:
+                asyncio.run_coroutine_threadsafe(
+                    broadcast("todos_updated", {"path": path}),
+                    _event_loop,
+                )
+
+
 def start_watchdog() -> "Observer | None":
     if not WATCHDOG_AVAILABLE:
         log.warning("watchdog not installed — file-based SSE updates disabled")
@@ -166,6 +325,27 @@ def start_watchdog() -> "Observer | None":
     observer.schedule(_NoteFileHandler(), str(NOTES_DIR), recursive=False)
     observer.start()
     log.info("Watchdog monitoring %s", NOTES_DIR)
+    return observer
+
+
+def start_todo_watchdog() -> "Observer | None":
+    """Watch Claude Code todo/task directories for live sidebar updates."""
+    if not WATCHDOG_AVAILABLE:
+        return None
+    observer = Observer()
+    handler = _TodoFileHandler()
+    watched = []
+    if CLAUDE_TODOS_DIR.exists():
+        observer.schedule(handler, str(CLAUDE_TODOS_DIR), recursive=False)
+        watched.append(str(CLAUDE_TODOS_DIR))
+    if CLAUDE_TASKS_DIR.exists():
+        observer.schedule(handler, str(CLAUDE_TASKS_DIR), recursive=True)
+        watched.append(str(CLAUDE_TASKS_DIR))
+    if not watched:
+        log.info("No Claude todo/task directories found — skipping todo watchdog")
+        return None
+    observer.start()
+    log.info("Todo watchdog monitoring %s", ", ".join(watched))
     return observer
 
 
@@ -192,7 +372,12 @@ async def handle_options(request: web.Request) -> web.Response:
 
 
 async def handle_get_ui(request: web.Request) -> web.Response:
-    html = build_html()
+    # Prefer pre-built React UI from ui/dist/index.html
+    dist_html = Path(__file__).resolve().parent.parent / "ui" / "dist" / "index.html"
+    if dist_html.exists():
+        html = dist_html.read_text()
+    else:
+        html = build_html()
     return cors(web.Response(content_type="text/html", text=html))
 
 
@@ -305,6 +490,89 @@ async def handle_exec(request: web.Request) -> web.Response:
             content_type="application/json",
             text=json.dumps({"status": "timeout", "error": f"Command exceeded {timeout}s timeout"}),
         ))
+
+
+async def handle_get_todos(_request: web.Request) -> web.Response:
+    """Return active Claude Code todos and team tasks.
+
+    Only returns sessions/teams modified within the last 2 hours —
+    older files are abandoned sessions whose pending items will never complete.
+    """
+    import time
+    sessions = []
+    teams = []
+    max_age = 2 * 3600  # 2 hours — anything older is a dead session
+    now = time.time()
+
+    # Scan ~/.claude/todos/ — only recent, non-empty files
+    if CLAUDE_TODOS_DIR.exists():
+        # Pre-filter by file size to skip empty arrays (avoids reading 7000+ files)
+        files = sorted(
+            (f for f in CLAUDE_TODOS_DIR.iterdir()
+             if f.suffix == ".json" and f.stat().st_size > 10),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        for f in files[:20]:
+            try:
+                mtime = f.stat().st_mtime
+                if now - mtime > max_age:
+                    break  # Files are sorted by mtime, so all remaining are older
+                data = json.loads(f.read_text())
+                if not data:
+                    continue
+                has_active = any(
+                    item.get("status") != "completed"
+                    for item in data
+                    if isinstance(item, dict)
+                )
+                if not has_active:
+                    continue
+                sid = f.stem.split("-agent-")[0] if "-agent-" in f.stem else f.stem
+                sessions.append({
+                    "file": f.name,
+                    "session_id": sid,
+                    "summary": get_session_summary(sid),
+                    "items": data,
+                    "has_active": has_active,
+                    "mtime": mtime,
+                })
+                if len(sessions) >= 5:
+                    break
+            except Exception:
+                continue
+
+    # Scan ~/.claude/tasks/ — only recent teams with active tasks
+    if CLAUDE_TASKS_DIR.exists():
+        for team_dir in sorted(
+            (d for d in CLAUDE_TASKS_DIR.iterdir() if d.is_dir()),
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )[:5]:
+            if now - team_dir.stat().st_mtime > max_age:
+                break
+            tasks = []
+            for tf in team_dir.glob("*.json"):
+                try:
+                    task = json.loads(tf.read_text())
+                    if isinstance(task, dict) and task.get("status") != "deleted":
+                        tasks.append(task)
+                except Exception:
+                    continue
+            active_tasks = [t for t in tasks if t.get("status") != "completed"]
+            if tasks and active_tasks:
+                team_id = team_dir.name
+                teams.append({
+                    "team": team_id,
+                    "summary": get_session_summary(team_id),
+                    "tasks": sorted(tasks, key=lambda t: int(t.get("id", 0))),
+                    "mtime": team_dir.stat().st_mtime,
+                })
+
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"sessions": sessions, "teams": teams}),
+    ))
 
 
 async def _handle_favicon(_request: web.Request) -> web.Response:
@@ -1244,6 +1512,7 @@ def build_app() -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)
     app.router.add_post("/api/exec", handle_exec)
+    app.router.add_get("/api/todos", handle_get_todos)
     app.router.add_get("/favicon.ico", _handle_favicon)
     return app
 
@@ -1329,15 +1598,19 @@ async def _iterm2_main(connection) -> None:
     )
     log.info("Registered iTerm2 Toolbelt webview panel")
 
-    # Start aiohttp server + watchdog, then run session monitor
+    # Start aiohttp server + watchdogs, then run session monitor
     runner = await _run_server()
     observer = start_watchdog()
+    todo_observer = start_todo_watchdog()
     try:
         await _session_monitor(connection)
     finally:
         if observer:
             observer.stop()
             observer.join()
+        if todo_observer:
+            todo_observer.stop()
+            todo_observer.join()
         await runner.cleanup()
 
 
@@ -1353,6 +1626,7 @@ if __name__ == "__main__":
         async def _standalone_main():
             runner = await _run_server()
             observer = start_watchdog()
+            todo_observer = start_todo_watchdog()
             try:
                 while True:
                     await asyncio.sleep(3600)
@@ -1360,6 +1634,9 @@ if __name__ == "__main__":
                 if observer:
                     observer.stop()
                     observer.join()
+                if todo_observer:
+                    todo_observer.stop()
+                    todo_observer.join()
                 await runner.cleanup()
 
         asyncio.run(_standalone_main())
