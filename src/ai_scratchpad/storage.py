@@ -19,6 +19,7 @@ CLAUDE_TODOS_DIR = Path.home() / ".claude" / "todos"
 CLAUDE_TASKS_DIR = Path.home() / ".claude" / "tasks"
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SUMMARY_CACHE_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "session-summaries.json"
+PREFS_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "prefs.json"
 DEFAULT_SESSION = "default"
 
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
@@ -266,3 +267,43 @@ def update_note_in_file(note_id: str, updates: dict) -> dict | None:
             except Exception:
                 continue
     return None
+
+
+# ---------------------------------------------------------------------------
+# User preferences (persisted server-side, survives WKWebView reloads)
+# ---------------------------------------------------------------------------
+_prefs_lock = threading.Lock()
+
+_DEFAULT_PREFS = {
+    "scope": "all",
+    "filter": {"source": "all", "status": "all", "searchText": ""},
+    "sort": {"field": "timestamp", "order": "desc"},
+    "pinned": [],
+}
+
+
+def load_prefs() -> dict:
+    with _prefs_lock:
+        if PREFS_PATH.exists():
+            try:
+                prefs = json.loads(PREFS_PATH.read_text())
+                # Merge with defaults for any missing keys
+                return {**_DEFAULT_PREFS, **prefs}
+            except Exception:
+                pass
+        return dict(_DEFAULT_PREFS)
+
+
+def save_prefs(prefs: dict) -> None:
+    with _prefs_lock:
+        PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=PREFS_PATH.parent, prefix=".prefs_tmp_")
+        try:
+            os.write(fd, json.dumps(prefs, indent=2).encode())
+            os.fsync(fd)
+            os.close(fd)
+            os.replace(tmp, PREFS_PATH)
+        except Exception:
+            os.close(fd)
+            os.unlink(tmp)
+            raise

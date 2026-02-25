@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Note } from "../types";
-import { fetchNotes, clearAllNotes, updateNoteStatus } from "../lib/api";
-
-const PINNED_KEY = "scratchpad_pinned";
-const FILTER_KEY = "scratchpad_filter";
-const SORT_KEY = "scratchpad_sort";
-const SCOPE_KEY = "scratchpad_scope";
+import { fetchNotes, clearAllNotes, updateNoteStatus, fetchPrefs, savePrefs } from "../lib/api";
 
 export type NoteScope = "all" | "tab";
 
@@ -24,69 +19,56 @@ interface NoteWithStatus extends Note {
   status?: "active" | "done";
 }
 
-function loadPinned(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(PINNED_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function loadFilter(): FilterState {
-  try {
-    return JSON.parse(localStorage.getItem(FILTER_KEY) || "null") || {
-      source: "all",
-      status: "all",
-      searchText: "",
-    };
-  } catch {
-    return { source: "all", status: "all", searchText: "" };
-  }
-}
-
-function loadSort(): SortOption {
-  try {
-    return JSON.parse(localStorage.getItem(SORT_KEY) || "null") || {
-      field: "timestamp",
-      order: "desc",
-    };
-  } catch {
-    return { field: "timestamp", order: "desc" };
-  }
-}
-
-function loadScope(): NoteScope {
-  return (localStorage.getItem(SCOPE_KEY) as NoteScope) || "all";
-}
+const DEFAULT_FILTER: FilterState = { source: "all", status: "all", searchText: "" };
+const DEFAULT_SORT: SortOption = { field: "timestamp", order: "desc" };
 
 export function useNotes() {
   const [notes, setNotes] = useState<NoteWithStatus[]>([]);
-  const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinned);
-  const [filter, setFilter] = useState<FilterState>(loadFilter);
-  const [sort, setSort] = useState<SortOption>(loadSort);
-  const [scope, setScope] = useState<NoteScope>(loadScope);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
+  const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
+  const [scope, setScope] = useState<NoteScope>("all");
   const [sessionId, setSessionId] = useState("");
+  const prefsLoaded = useRef(false);
+
+  // Load prefs from server on mount
+  useEffect(() => {
+    fetchPrefs().then((prefs) => {
+      setScope((prefs.scope as NoteScope) || "all");
+      setPinnedIds(prefs.pinned || []);
+      if (prefs.filter) setFilter({ ...DEFAULT_FILTER, ...prefs.filter } as FilterState);
+      if (prefs.sort) setSort({ ...DEFAULT_SORT, ...prefs.sort } as SortOption);
+      prefsLoaded.current = true;
+    });
+  }, []);
+
+  // Debounced save to server — fire-and-forget
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const persistPrefs = useCallback((partial: Record<string, unknown>) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => savePrefs(partial), 300);
+  }, []);
 
   const updateFilter = useCallback((newFilter: Partial<FilterState>) => {
     setFilter((prev) => {
       const next = { ...prev, ...newFilter };
-      localStorage.setItem(FILTER_KEY, JSON.stringify(next));
+      persistPrefs({ filter: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
 
   const updateSort = useCallback((newSort: Partial<SortOption>) => {
     setSort((prev) => {
       const next = { ...prev, ...newSort };
-      localStorage.setItem(SORT_KEY, JSON.stringify(next));
+      persistPrefs({ sort: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
 
   const updateScope = useCallback((s: NoteScope) => {
     setScope(s);
-    localStorage.setItem(SCOPE_KEY, s);
-  }, []);
+    persistPrefs({ scope: s });
+  }, [persistPrefs]);
 
   const load = useCallback(async () => {
     try {
@@ -117,10 +99,10 @@ export function useNotes() {
       const next = prev.includes(id)
         ? prev.filter((p) => p !== id)
         : [...prev, id];
-      localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+      persistPrefs({ pinned: next });
       return next;
     });
-  }, []);
+  }, [persistPrefs]);
 
   const toggleDone = useCallback((id: string) => {
     // Optimistic update

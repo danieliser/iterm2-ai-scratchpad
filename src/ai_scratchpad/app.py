@@ -12,7 +12,7 @@ from .handlers import (
     handle_options, handle_get_ui, handle_post_note, handle_get_notes,
     handle_delete_notes, handle_patch_note, handle_get_session,
     handle_health, handle_sse, handle_run, handle_get_todos,
-    _handle_favicon,
+    handle_get_prefs, handle_put_prefs, _handle_favicon,
 )
 
 log = logging.getLogger(__name__)
@@ -31,6 +31,8 @@ def build_app() -> web.Application:
     app.router.add_get("/events", handle_sse)
     app.router.add_post("/api/exec", handle_run)
     app.router.add_get("/api/todos", handle_get_todos)
+    app.router.add_get("/api/prefs", handle_get_prefs)
+    app.router.add_put("/api/prefs", handle_put_prefs)
     app.router.add_get("/favicon.ico", _handle_favicon)
     return app
 

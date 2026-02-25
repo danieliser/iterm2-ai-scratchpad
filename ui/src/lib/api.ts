@@ -60,6 +60,36 @@ export async function updateNoteStatus(
   }
 }
 
+export type Prefs = {
+  scope: "all" | "tab";
+  filter: { source: string; status: string; searchText: string };
+  sort: { field: string; order: string };
+  pinned: string[];
+};
+
+export async function fetchPrefs(): Promise<Prefs> {
+  try {
+    const r = await fetch(`${API}/api/prefs`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  } catch (e) {
+    console.error("fetchPrefs failed:", e);
+    return { scope: "all", filter: { source: "all", status: "all", searchText: "" }, sort: { field: "timestamp", order: "desc" }, pinned: [] };
+  }
+}
+
+export async function savePrefs(prefs: Partial<Prefs>): Promise<void> {
+  try {
+    await fetch(`${API}/api/prefs`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefs),
+    });
+  } catch (e) {
+    console.error("savePrefs failed:", e);
+  }
+}
+
 export async function execCommand(
   command: string,
   background: boolean,

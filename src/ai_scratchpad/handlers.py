@@ -15,6 +15,7 @@ from .storage import (
     NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, DEFAULT_SESSION,
     get_current_session_id, get_start_time, get_session_summary,
     load_notes, save_notes, load_all_notes, append_note, update_note_in_file,
+    load_prefs, save_prefs,
 )
 from .streaming import broadcast, get_sse_clients, get_sse_lock
 from .ui import build_html
@@ -26,7 +27,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _ALLOWED_ORIGINS = {"http://localhost:9999", "http://127.0.0.1:9999"}
 CORS_HEADERS = {
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, PATCH, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
 }
 
@@ -349,6 +350,32 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
     return cors(web.Response(
         content_type="application/json",
         text=json.dumps(result),
+    ))
+
+
+# ---------------------------------------------------------------------------
+# Preferences (persisted server-side)
+# ---------------------------------------------------------------------------
+async def handle_get_prefs(_request: web.Request) -> web.Response:
+    prefs = await asyncio.to_thread(load_prefs)
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps(prefs),
+    ))
+
+
+async def handle_put_prefs(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except Exception:
+        return cors(web.Response(status=400, text="Invalid JSON"))
+    # Merge with existing prefs (partial updates allowed)
+    prefs = await asyncio.to_thread(load_prefs)
+    prefs.update(body)
+    await asyncio.to_thread(save_prefs, prefs)
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps(prefs),
     ))
 
 
