@@ -3,6 +3,7 @@ export interface Note {
   text: string;
   source: string;
   timestamp: string;
+  session_id?: string;
 }
 
 export interface TodoItem {

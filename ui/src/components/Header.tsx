@@ -40,11 +40,19 @@ export function Header({
         <div className="title-actions">
           <button
             className="icon-btn"
+            onClick={() => window.open("http://localhost:9999", "_blank")}
+            title="Open in browser"
+            aria-label="Open in browser"
+          >
+            ↗
+          </button>
+          <button
+            className="icon-btn"
             onClick={onToggleTheme}
             title={`Theme: ${theme}`}
-            aria-label="Toggle theme"
+            aria-label="Cycle theme"
           >
-            {theme === "cockpit" ? "◐" : "◑"}
+            {theme === "auto" ? "◎" : theme === "light" ? "☀" : theme === "cockpit" ? "◐" : "◑"}
           </button>
         </div>
       </div>

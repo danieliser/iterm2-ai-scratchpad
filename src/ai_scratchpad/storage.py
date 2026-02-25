@@ -25,6 +25,9 @@ DEFAULT_SESSION = "default"
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
 _current_session_id: str = DEFAULT_SESSION
 
+# iTerm2 connection reference — set by session monitor for tab activation
+_iterm2_connection = None
+
 # Server start time for uptime reporting
 _start_time: datetime = datetime.now(timezone.utc)
 
@@ -46,6 +49,15 @@ def get_current_session_id() -> str:
 def set_current_session_id(value: str) -> None:
     global _current_session_id
     _current_session_id = value
+
+
+def get_iterm2_connection():
+    return _iterm2_connection
+
+
+def set_iterm2_connection(conn) -> None:
+    global _iterm2_connection
+    _iterm2_connection = conn
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +209,10 @@ def load_notes(session_id: str = DEFAULT_SESSION) -> list:
     if not path.exists():
         return []
     try:
-        return json.loads(path.read_text())
+        notes = json.loads(path.read_text())
+        for n in notes:
+            n.setdefault("session_id", session_id)
+        return notes
     except Exception as exc:
         log.error("Failed to read notes from %s: %s", path, exc)
         return []
@@ -218,10 +233,12 @@ def load_all_notes(max_age_hours: int = 24, max_notes: int = 200) -> list:
 
     for path in NOTES_DIR.glob("*.json"):
         try:
+            sid = path.stem
             notes = json.loads(path.read_text())
             if isinstance(notes, list):
                 for n in notes:
                     if n.get("timestamp", "") >= cutoff:
+                        n.setdefault("session_id", sid)
                         all_notes.append(n)
         except Exception as exc:
             log.error("Failed to read notes from %s: %s", path, exc)

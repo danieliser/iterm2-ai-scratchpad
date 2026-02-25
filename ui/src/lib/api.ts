@@ -90,6 +90,18 @@ export async function savePrefs(prefs: Partial<Prefs>): Promise<void> {
   }
 }
 
+export async function activateSession(sessionId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${API}/api/sessions/${encodeURIComponent(sessionId)}/activate`, {
+      method: "POST",
+    });
+    return r.ok;
+  } catch (e) {
+    console.error("activateSession failed:", e);
+    return false;
+  }
+}
+
 export async function execCommand(
   command: string,
   background: boolean,

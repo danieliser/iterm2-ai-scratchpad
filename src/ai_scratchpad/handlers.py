@@ -15,9 +15,11 @@ from aiohttp import web
 from .storage import (
     NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, DEFAULT_SESSION,
     get_current_session_id, get_start_time, get_session_summary,
+    get_iterm2_connection,
     load_notes, save_notes, load_all_notes, append_note, update_note_in_file,
     load_prefs, save_prefs,
 )
+from . import ITERM2_AVAILABLE, _iterm2
 from .streaming import broadcast, get_sse_clients, get_sse_lock
 from .ui import build_html
 
@@ -105,6 +107,7 @@ async def handle_post_note(request: web.Request) -> web.Response:
         "text": text,
         "source": source,
         "status": "active",
+        "session_id": session_id,
         "metadata": body.get("metadata", {}),
     }
 
@@ -233,6 +236,54 @@ async def handle_get_session(request: web.Request) -> web.Response:
         content_type="application/json",
         text=json.dumps({"session_id": get_current_session_id()}),
     ))
+
+
+async def handle_activate_session(request: web.Request) -> web.Response:
+    """Activate an iTerm2 tab by session ID."""
+    session_id = request.match_info.get("session_id", "")
+    if not session_id:
+        return cors(web.Response(status=400, text="session_id required"))
+
+    if not ITERM2_AVAILABLE:
+        return cors(web.Response(
+            status=501,
+            content_type="application/json",
+            text=json.dumps({"error": "iTerm2 not available"}),
+        ))
+
+    connection = get_iterm2_connection()
+    if not connection:
+        return cors(web.Response(
+            status=503,
+            content_type="application/json",
+            text=json.dumps({"error": "iTerm2 connection not ready"}),
+        ))
+
+    try:
+        app = await _iterm2.async_get_app(connection)
+        for window in app.windows:
+            for tab in window.tabs:
+                for session in tab.sessions:
+                    if session.session_id == session_id:
+                        await tab.async_activate()
+                        await session.async_activate()
+                        log.info("Activated session %s", session_id)
+                        return cors(web.Response(
+                            content_type="application/json",
+                            text=json.dumps({"status": "ok", "session_id": session_id}),
+                        ))
+        return cors(web.Response(
+            status=404,
+            content_type="application/json",
+            text=json.dumps({"error": "session not found", "session_id": session_id}),
+        ))
+    except Exception as exc:
+        log.error("Failed to activate session %s: %s", session_id, exc)
+        return cors(web.Response(
+            status=500,
+            content_type="application/json",
+            text=json.dumps({"error": str(exc)}),
+        ))
 
 
 # ---------------------------------------------------------------------------
