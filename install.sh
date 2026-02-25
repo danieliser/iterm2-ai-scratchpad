@@ -25,12 +25,19 @@ echo -e "\n${BOLD}AI Scratchpad — iTerm2 + Claude Code installer${NC}\n"
 
 # ── Locate or clone the repo ────────────────────────────────────────
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR=""
 
-if [[ -f "$SCRIPT_DIR/src/launch.py" ]]; then
-    REPO_DIR="$SCRIPT_DIR"
-    info "Using local repo at $REPO_DIR"
-else
+# If run locally (not piped), check if we're inside the repo
+if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != "bash" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [[ -f "$SCRIPT_DIR/src/launch.py" ]]; then
+        REPO_DIR="$SCRIPT_DIR"
+        info "Using local repo at $REPO_DIR"
+    fi
+fi
+
+# Otherwise, clone or update
+if [[ -z "$REPO_DIR" ]]; then
     REPO_DIR="$HOME/.local/share/ai-scratchpad"
     if [[ -d "$REPO_DIR/.git" ]]; then
         info "Updating existing install at $REPO_DIR"
