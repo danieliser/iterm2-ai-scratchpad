@@ -2,10 +2,16 @@
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
-/* ============= COCKPIT THEME (default) ============= */
+/* =============================================================
+   THEME SYSTEM: Two independent axes
+   - data-style: "cockpit" | "refined"  (aesthetic: fonts, radius, glow)
+   - data-scheme: "dark" | "light"      (color palette)
+   ============================================================= */
 
-:root,
-[data-theme="cockpit"] {
+/* ============= DEFAULTS (cockpit + dark) ============= */
+
+:root {
+  /* --- Colors (dark) --- */
   --bg-base: #0d0d0f;
   --bg-surface: #16161a;
   --bg-raised: #1e1e24;
@@ -32,7 +38,7 @@
   --accent-info: #5dd4ff;
   --accent-info-dim: #152a35;
 
-  /* Backward compat */
+  /* Backward compat aliases */
   --accent-amber: var(--accent-primary);
   --accent-amber-dim: var(--accent-primary-dim);
   --accent-cyan: var(--accent-info);
@@ -40,6 +46,7 @@
   --accent-blue: var(--accent-info);
   --accent-blue-dim: var(--accent-info-dim);
 
+  /* --- Style (cockpit) --- */
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
   --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -52,16 +59,37 @@
   --radius-md: 3px;
   --radius-lg: 5px;
 
-  /* Theme-specific decoration */
   --scanline-opacity: 0.018;
   --glow-spread: 6px;
   --card-shadow: inset 0 0 12px rgba(232, 168, 50, 0.08);
   --card-pinned-shadow: inset 0 0 10px rgba(232, 168, 50, 0.1);
 }
 
-/* ============= REFINED TERMINAL THEME ============= */
+/* ============= STYLE: REFINED ============= */
+/* Aesthetic overrides only — fonts, radius, decoration */
 
-[data-theme="refined"] {
+[data-style="refined"] {
+  --font-ui: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --scanline-opacity: 0;
+  --glow-spread: 0px;
+}
+
+/* ============= SCHEME: DARK — per-style color palettes ============= */
+
+/* Cockpit dark (default — matches :root, listed for clarity) */
+[data-style="cockpit"][data-scheme="dark"] {
+  --accent-primary: #E8A832;
+  --accent-primary-dim: #2a2210;
+  --accent-primary-glow: rgba(232, 168, 50, 0.25);
+  --card-shadow: inset 0 0 12px rgba(232, 168, 50, 0.08);
+  --card-pinned-shadow: inset 0 0 10px rgba(232, 168, 50, 0.1);
+}
+
+/* Refined dark (Catppuccin Mocha) */
+[data-style="refined"][data-scheme="dark"] {
   --bg-base: #1e1e2e;
   --bg-surface: #24243a;
   --bg-raised: #313244;
@@ -88,77 +116,83 @@
   --accent-info: #89b4fa;
   --accent-info-dim: #1e2a3a;
 
-  --accent-amber: var(--accent-primary);
-  --accent-amber-dim: var(--accent-primary-dim);
-  --accent-cyan: var(--accent-info);
-  --accent-cyan-dim: var(--accent-info-dim);
-  --accent-blue: var(--accent-info);
-  --accent-blue-dim: var(--accent-info-dim);
-
-  --font-ui: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
-
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-
-  --scanline-opacity: 0;
-  --glow-spread: 0px;
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   --card-pinned-shadow: 0 1px 6px rgba(203, 166, 247, 0.15);
 }
 
-/* ============= LIGHT THEME ============= */
+/* ============= SCHEME: LIGHT — per-style color palettes ============= */
 
-[data-theme="light"] {
-  --bg-base: #f5f5f0;
-  --bg-surface: #eeeee8;
+/* Cockpit light (warm amber on cream) */
+[data-style="cockpit"][data-scheme="light"] {
+  --bg-base: #f8f6f0;
+  --bg-surface: #f0ede5;
   --bg-raised: #ffffff;
-  --bg-hover: #e6e6df;
+  --bg-hover: #e8e5dc;
 
-  --border: #d4d4cc;
-  --border-subtle: #e0e0d8;
-  --border-accent: #c8c8c0;
+  --border: #d6d2c8;
+  --border-subtle: #e2ded4;
+  --border-accent: #cac5b8;
 
   --text-primary: #1a1a1a;
-  --text-secondary: #555555;
-  --text-muted: #888888;
+  --text-secondary: #555550;
+  --text-muted: #8a8a80;
 
-  --accent-primary: #6366f1;
-  --accent-primary-dim: #eef2ff;
-  --accent-primary-glow: rgba(99, 102, 241, 0.15);
+  --accent-primary: #b8860b;
+  --accent-primary-dim: #fdf6e3;
+  --accent-primary-glow: rgba(184, 134, 11, 0.15);
 
-  --accent-green: #16a34a;
-  --accent-green-dim: #dcfce7;
-  --accent-red: #dc2626;
-  --accent-red-dim: #fef2f2;
-  --accent-yellow: #ca8a04;
-  --accent-yellow-dim: #fefce8;
-  --accent-info: #2563eb;
-  --accent-info-dim: #eff6ff;
-
-  --accent-amber: var(--accent-primary);
-  --accent-amber-dim: var(--accent-primary-dim);
-  --accent-cyan: var(--accent-info);
-  --accent-cyan-dim: var(--accent-info-dim);
-  --accent-blue: var(--accent-info);
-  --accent-blue-dim: var(--accent-info-dim);
-
-  --font-ui: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
-
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --accent-green: #2e7d32;
+  --accent-green-dim: #e8f5e9;
+  --accent-red: #c62828;
+  --accent-red-dim: #ffebee;
+  --accent-yellow: #f57f17;
+  --accent-yellow-dim: #fff8e1;
+  --accent-info: #1565c0;
+  --accent-info-dim: #e3f2fd;
 
   --scanline-opacity: 0;
-  --glow-spread: 0px;
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --card-pinned-shadow: 0 1px 6px rgba(99, 102, 241, 0.12);
+  --card-pinned-shadow: 0 1px 4px rgba(184, 134, 11, 0.12);
 }
 
-[data-theme="light"] .widget-diff-add { background: #dcfce7; color: #166534; }
-[data-theme="light"] .widget-diff-del { background: #fef2f2; color: #991b1b; }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c8c8c0; }
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+/* Refined light (Catppuccin Latte) */
+[data-style="refined"][data-scheme="light"] {
+  --bg-base: #eff1f5;
+  --bg-surface: #e6e9ef;
+  --bg-raised: #ffffff;
+  --bg-hover: #dce0e8;
+
+  --border: #ccd0da;
+  --border-subtle: #dce0e8;
+  --border-accent: #bcc0cc;
+
+  --text-primary: #4c4f69;
+  --text-secondary: #6c6f85;
+  --text-muted: #9ca0b0;
+
+  --accent-primary: #8839ef;
+  --accent-primary-dim: #f3ecfe;
+  --accent-primary-glow: rgba(136, 57, 239, 0.12);
+
+  --accent-green: #40a02b;
+  --accent-green-dim: #e6f7e2;
+  --accent-red: #d20f39;
+  --accent-red-dim: #fde8ed;
+  --accent-yellow: #df8e1d;
+  --accent-yellow-dim: #fdf4e3;
+  --accent-info: #1e66f5;
+  --accent-info-dim: #e5edfe;
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --card-pinned-shadow: 0 1px 6px rgba(136, 57, 239, 0.1);
+}
+
+/* ============= SCHEME-SPECIFIC OVERRIDES ============= */
+
+[data-scheme="light"] .widget-diff-add { background: #dcfce7; color: #166534; }
+[data-scheme="light"] .widget-diff-del { background: #fef2f2; color: #991b1b; }
+[data-scheme="light"] ::-webkit-scrollbar-thumb { background: #c8c8c0; }
+[data-scheme="light"] ::-webkit-scrollbar-thumb:hover { background: #aaa; }
 
 /* ============= BASE RESET ============= */
 
@@ -738,8 +772,8 @@ body::after {
 .widget-diff-del { background: #2a1212; color: var(--accent-red); }
 .widget-diff-ctx { color: var(--text-muted); }
 
-[data-theme="refined"] .widget-diff-add { background: #1e3a1e; }
-[data-theme="refined"] .widget-diff-del { background: #3a1e2a; }
+[data-style="refined"][data-scheme="dark"] .widget-diff-add { background: #1e3a1e; }
+[data-style="refined"][data-scheme="dark"] .widget-diff-del { background: #3a1e2a; }
 
 /* Todo checklists */
 .widget-todo { margin: var(--space-1) 0; }

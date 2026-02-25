@@ -1,60 +1,75 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchPrefs, savePrefs } from "../lib/api";
 
-export type Theme = "auto" | "cockpit" | "refined" | "light";
+export type Style = "cockpit" | "refined";
+export type Scheme = "auto" | "dark" | "light";
 
-const THEMES: Theme[] = ["auto", "cockpit", "refined", "light"];
+const STYLES: Style[] = ["cockpit", "refined"];
+const SCHEMES: Scheme[] = ["auto", "dark", "light"];
 
-function resolveTheme(theme: Theme): string {
-  if (theme !== "auto") return theme;
+function resolveScheme(scheme: Scheme): "dark" | "light" {
+  if (scheme !== "auto") return scheme;
   return window.matchMedia("(prefers-color-scheme: light)").matches
     ? "light"
-    : "cockpit";
+    : "dark";
 }
 
-function applyTheme(theme: Theme) {
-  document.documentElement.dataset.theme = resolveTheme(theme);
+function apply(style: Style, scheme: Scheme) {
+  const el = document.documentElement;
+  el.dataset.style = style;
+  el.dataset.scheme = resolveScheme(scheme);
 }
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>("auto");
+  const [style, setStyle] = useState<Style>("cockpit");
+  const [scheme, setScheme] = useState<Scheme>("auto");
 
   useEffect(() => {
     fetchPrefs().then((prefs) => {
-      const saved = (prefs as Record<string, unknown>).theme as Theme | undefined;
-      if (saved && THEMES.includes(saved)) {
-        setTheme(saved);
-        applyTheme(saved);
-      } else {
-        applyTheme("auto");
-      }
+      const p = prefs as Record<string, unknown>;
+      const savedStyle = p.style as Style | undefined;
+      const savedScheme = p.scheme as Scheme | undefined;
+      // Migrate old single "theme" pref
+      const oldTheme = p.theme as string | undefined;
+
+      const s = savedStyle && STYLES.includes(savedStyle) ? savedStyle :
+                oldTheme === "refined" ? "refined" : "cockpit";
+      const sc = savedScheme && SCHEMES.includes(savedScheme) ? savedScheme :
+                 oldTheme === "light" ? "light" :
+                 oldTheme === "auto" ? "auto" : "auto";
+
+      setStyle(s);
+      setScheme(sc);
+      apply(s, sc);
     });
   }, []);
 
-  // Listen for system theme changes when in auto mode
+  // Listen for system scheme changes when in auto mode
   useEffect(() => {
-    if (theme !== "auto") return;
+    if (scheme !== "auto") return;
     const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const handler = () => applyTheme("auto");
+    const handler = () => apply(style, "auto");
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [theme]);
+  }, [scheme, style]);
 
-  const setAndPersist = useCallback((next: Theme) => {
-    setTheme(next);
-    applyTheme(next);
-    savePrefs({ theme: next } as Record<string, unknown>);
-  }, []);
-
-  const cycleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const idx = THEMES.indexOf(prev);
-      const next = THEMES[(idx + 1) % THEMES.length];
-      applyTheme(next);
-      savePrefs({ theme: next } as Record<string, unknown>);
+  const cycleStyle = useCallback(() => {
+    setStyle((prev) => {
+      const next = STYLES[(STYLES.indexOf(prev) + 1) % STYLES.length];
+      apply(next, scheme);
+      savePrefs({ style: next } as Record<string, unknown>);
       return next;
     });
-  }, []);
+  }, [scheme]);
 
-  return { theme, setTheme: setAndPersist, cycleTheme };
+  const cycleScheme = useCallback(() => {
+    setScheme((prev) => {
+      const next = SCHEMES[(SCHEMES.indexOf(prev) + 1) % SCHEMES.length];
+      apply(style, next);
+      savePrefs({ scheme: next } as Record<string, unknown>);
+      return next;
+    });
+  }, [style]);
+
+  return { style, scheme, cycleStyle, cycleScheme };
 }

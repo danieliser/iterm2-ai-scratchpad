@@ -36,7 +36,7 @@ export default function App() {
 
   const { toasts, showToast } = useToast();
   const { sessions, teams, reload: reloadTodos } = useTaskWatcher();
-  const { theme, cycleTheme } = useTheme();
+  const { style, scheme, cycleStyle, cycleScheme } = useTheme();
 
   // Filter bar: hidden by default, auto-show when 2+ sources
   const [filtersManuallyToggled, setFiltersManuallyToggled] = useState(false);
@@ -103,8 +103,10 @@ export default function App() {
         sessionId={sessionId}
         noteCount={notes.length}
         totalCount={allNotes.length}
-        theme={theme}
-        onToggleTheme={cycleTheme}
+        style={style}
+        scheme={scheme}
+        onCycleStyle={cycleStyle}
+        onCycleScheme={cycleScheme}
         filtersVisible={filtersVisible}
         onToggleFilters={handleToggleFilters}
       />
