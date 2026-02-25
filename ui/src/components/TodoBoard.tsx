@@ -44,7 +44,11 @@ function SessionPanel({ session }: { session: TodoSession }) {
 
   return (
     <div className="todo-panel">
-      <button className="todo-panel-header" onClick={() => setOpen(!open)}>
+      <button
+        className="todo-panel-header"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
         <span className={`todo-panel-arrow${open ? " open" : ""}`}>&#9654;</span>
         <span className="todo-panel-title" title={session.session_id}>{label}</span>
         <ProgressSummary items={session.items} />
@@ -78,7 +82,11 @@ function TeamPanel({ team }: { team: TaskTeam }) {
 
   return (
     <div className="todo-panel">
-      <button className="todo-panel-header" onClick={() => setOpen(!open)}>
+      <button
+        className="todo-panel-header"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
         <span className={`todo-panel-arrow${open ? " open" : ""}`}>&#9654;</span>
         <span className="todo-panel-title" title={team.team}>{label}</span>
         <ProgressSummary items={team.tasks} />

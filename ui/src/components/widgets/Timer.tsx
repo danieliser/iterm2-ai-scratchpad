@@ -15,7 +15,7 @@ export function Timer({ duration, label }: Props) {
       setRemaining((r) => Math.max(0, r - 1));
     }, 1000);
     return () => clearInterval(id);
-  }, [remaining > 0]);
+  }, [remaining <= 0]);
 
   return (
     <div className={`widget-timer${remaining <= 0 ? " expired" : ""}`}>

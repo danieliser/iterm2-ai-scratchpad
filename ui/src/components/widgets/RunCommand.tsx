@@ -17,8 +17,9 @@ export function RunCommand({ command, label }: Props) {
         const data = await execCommand(command, true);
         setOutput(`Started in background (PID ${data.pid})`);
         setOutputClass("success");
-      } catch (err: any) {
-        setOutput(`Failed: ${err.message}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setOutput(`Failed: ${message}`);
         setOutputClass("error");
       }
       return;
@@ -40,9 +41,10 @@ export function RunCommand({ command, label }: Props) {
         setOutputClass("error");
         setOutput(`Unexpected: ${JSON.stringify(data)}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setOutputClass("error");
-      setOutput(`Failed: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setOutput(`Failed: ${message}`);
     } finally {
       setRunning(false);
     }

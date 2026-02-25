@@ -13,6 +13,7 @@ export function Details({ title, children }: Props) {
       <button
         className="widget-details-toggle"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
       >
         <span className="widget-details-arrow">&#9654;</span>
         {title}

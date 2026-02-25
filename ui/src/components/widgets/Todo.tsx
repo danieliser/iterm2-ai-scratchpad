@@ -32,6 +32,13 @@ export function Todo({ content }: Props) {
     );
   };
 
+  const handleKeyDown = (idx: number, e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle(idx);
+    }
+  };
+
   return (
     <div className="widget-todo">
       {items.map((item, i) => (
@@ -39,6 +46,10 @@ export function Todo({ content }: Props) {
           key={i}
           className={`widget-todo-item${item.done ? " done" : ""}`}
           onClick={() => toggle(i)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          role="checkbox"
+          aria-checked={item.done}
+          tabIndex={0}
         >
           <span className="widget-todo-check">
             {item.done ? "\u2713" : ""}
