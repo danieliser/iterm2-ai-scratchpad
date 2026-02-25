@@ -6,11 +6,11 @@ interface Props {
 export function ProgressBar({ value, label }: Props) {
   const v = Math.min(100, Math.max(0, value));
   const color =
-    v >= 80 ? "#4ec94e" : v >= 50 ? "#e0c040" : v >= 25 ? "#569cd6" : "#f44747";
+    v >= 80 ? "var(--accent-green)" : v >= 50 ? "var(--accent-yellow)" : v >= 25 ? "var(--accent-blue)" : "var(--accent-red)";
 
   return (
     <div className="widget-progress">
-      {label && <span style={{ fontSize: 10, color: "#d4d4d4" }}>{label}</span>}
+      {label && <span style={{ fontSize: 10, color: "var(--text-primary)" }}>{label}</span>}
       <div className="widget-progress-bar">
         <div
           className="widget-progress-fill"

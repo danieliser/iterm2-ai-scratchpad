@@ -1,14 +1,25 @@
 import type { Note } from "../types";
 import { NoteCard } from "./NoteCard";
 
+interface NoteWithStatus extends Note {
+  status?: "active" | "done";
+}
+
 interface Props {
-  notes: Note[];
+  notes: NoteWithStatus[];
   pinnedIds: string[];
   onTogglePin: (id: string) => void;
+  onToggleDone?: (id: string) => void;
   emptyMessage: string;
 }
 
-export function NoteList({ notes, pinnedIds, onTogglePin, emptyMessage }: Props) {
+export function NoteList({
+  notes,
+  pinnedIds,
+  onTogglePin,
+  onToggleDone,
+  emptyMessage,
+}: Props) {
   if (notes.length === 0) {
     return <div className="empty">{emptyMessage}</div>;
   }
@@ -21,6 +32,7 @@ export function NoteList({ notes, pinnedIds, onTogglePin, emptyMessage }: Props)
           note={note}
           pinned={pinnedIds.includes(note.id)}
           onTogglePin={() => onTogglePin(note.id)}
+          onToggleDone={onToggleDone ? () => onToggleDone(note.id) : undefined}
         />
       ))}
     </div>

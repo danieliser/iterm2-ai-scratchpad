@@ -16,11 +16,14 @@ export default function App() {
     allNotes,
     sources,
     pinnedIds,
-    activeFilter,
-    setActiveFilter,
+    filter,
+    updateFilter,
+    sort,
+    updateSort,
     addNote,
     clearNotes,
     togglePin,
+    toggleDone,
     reload,
   } = useNotes();
 
@@ -46,10 +49,10 @@ export default function App() {
 
   const connected = useSSE({
     onNoteAdded,
-    onNotesCleared: useCallback(() => reload(), [reload]),
-    onNotesUpdated: useCallback(() => reload(), [reload]),
-    onSessionChanged: useCallback(() => reload(), [reload]),
-    onTodosUpdated: useCallback(() => reloadTodos(), [reloadTodos]),
+    onNotesCleared: () => reload(),
+    onNotesUpdated: () => reload(),
+    onSessionChanged: () => reload(),
+    onTodosUpdated: () => reloadTodos(),
   });
 
   // Refresh relative timestamps every 30s
@@ -60,14 +63,13 @@ export default function App() {
   }, [allNotes.length, reload]);
 
   const handleClear = async () => {
-    if (!confirm("Clear all notes?")) return;
     await clearNotes();
   };
 
   const emptyMessage =
     allNotes.length === 0
       ? "No notes yet. AI agents will post here."
-      : `No notes from "${activeFilter}"`;
+      : `No notes matching filters`;
 
   return (
     <>
@@ -76,13 +78,21 @@ export default function App() {
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
         sources={sources}
-        active={activeFilter}
-        onSelect={setActiveFilter}
+        activeSource={filter.source}
+        onSourceChange={(source) => updateFilter({ source })}
+        activeStatus={filter.status}
+        onStatusChange={(status) => updateFilter({ status })}
+        searchText={filter.searchText}
+        onSearchChange={(searchText) => updateFilter({ searchText })}
+        sortField={sort.field}
+        sortOrder={sort.order}
+        onSortChange={(field, order) => updateSort({ field, order })}
       />
       <NoteList
         notes={notes}
         pinnedIds={pinnedIds}
         onTogglePin={togglePin}
+        onToggleDone={toggleDone}
         emptyMessage={emptyMessage}
       />
     </>

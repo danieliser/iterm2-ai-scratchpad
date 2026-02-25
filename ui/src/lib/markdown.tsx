@@ -18,6 +18,7 @@ import {
   Mermaid,
   RunCommand,
 } from "../components/widgets";
+import DOMPurify from "dompurify";
 import { escapeHtml } from "./format";
 
 /**
@@ -33,7 +34,7 @@ import { escapeHtml } from "./format";
 let _widgetSeq = 0;
 
 function nextPlaceholder(): string {
-  return `\x00W${++_widgetSeq}\x00`;
+  return `\x00W${_widgetSeq++}\x00`;
 }
 
 function extractWidgets(
@@ -90,7 +91,7 @@ function extractWidgets(
     /\[details:([^\]]+)]([\s\S]*?)\[\/details]/g,
     (_, title, body) => (
       <Details title={title}>
-        <span dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(body.trim()) }} />
+        <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderInlineMarkdown(body.trim())) }} />
       </Details>
     ),
   );
@@ -247,6 +248,7 @@ function renderMarkdownToHtml(s: string): string {
 /**
  * Parse a note's raw text into an array of React elements.
  * Widgets become React components, markdown becomes HTML spans.
+ * Uses position-based keys to avoid stale widget state issues.
  */
 export function parseNoteContent(raw: string): ReactNode[] {
   const { text, widgets } = extractWidgets(raw);
@@ -254,7 +256,7 @@ export function parseNoteContent(raw: string): ReactNode[] {
   if (widgets.size === 0) {
     return [
       <span
-        key="md"
+        key="0"
         dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(text) }}
       />,
     ];
@@ -265,21 +267,21 @@ export function parseNoteContent(raw: string): ReactNode[] {
   const regex = /\x00W\d+\x00/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-  let partKey = 0;
+  let partIndex = 0;
 
   while ((match = regex.exec(text)) !== null) {
     const before = text.slice(lastIndex, match.index);
     if (before) {
       parts.push(
         <span
-          key={`t${partKey++}`}
+          key={partIndex++}
           dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(before) }}
         />,
       );
     }
     const widget = widgets.get(match[0]);
     if (widget) {
-      parts.push(<span key={`w${partKey++}`}>{widget}</span>);
+      parts.push(<span key={partIndex++}>{widget}</span>);
     }
     lastIndex = match.index + match[0].length;
   }
@@ -288,7 +290,7 @@ export function parseNoteContent(raw: string): ReactNode[] {
   if (trailing) {
     parts.push(
       <span
-        key={`t${partKey++}`}
+        key={partIndex++}
         dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(trailing) }}
       />,
     );

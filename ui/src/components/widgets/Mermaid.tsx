@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 
 interface Props {
   code: string;
@@ -16,10 +17,10 @@ function loadMermaid() {
         theme: "dark",
         themeVariables: {
           darkMode: true,
-          background: "#1e1e1e",
-          primaryColor: "#569cd6",
-          primaryTextColor: "#d4d4d4",
-          lineColor: "#808080",
+          background: "var(--bg-base)",
+          primaryColor: "var(--accent-blue)",
+          primaryTextColor: "var(--text-primary)",
+          lineColor: "var(--text-muted)",
         },
       });
       return mod;
@@ -46,7 +47,7 @@ export function Mermaid({ code }: Props) {
         // Mermaid returns SVG as a string; this is safe since it comes
         // from the mermaid renderer, not user input.
         ref.current.textContent = "";
-        ref.current.insertAdjacentHTML("afterbegin", result.svg);
+        ref.current.insertAdjacentHTML("afterbegin", DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true } }));
       })
       .catch((err: any) => {
         if (!cancelled) setError(String(err));
@@ -60,7 +61,7 @@ export function Mermaid({ code }: Props) {
   if (error) {
     return (
       <div className="widget-mermaid">
-        <pre style={{ color: "#f44747", fontSize: 10 }}>
+        <pre style={{ color: "var(--accent-red)", fontSize: 10 }}>
           Diagram error: {error}
         </pre>
       </div>
@@ -69,7 +70,7 @@ export function Mermaid({ code }: Props) {
 
   return (
     <div className="widget-mermaid" ref={ref}>
-      <pre style={{ color: "#808080", fontSize: 10 }}>Loading diagram...</pre>
+      <pre style={{ color: "var(--text-muted)", fontSize: 10 }}>Loading diagram...</pre>
     </div>
   );
 }

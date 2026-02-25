@@ -13,6 +13,7 @@ export function useSSE(callbacks: SSECallbacks) {
   const [connected, setConnected] = useState(false);
   const cbRef = useRef(callbacks);
   cbRef.current = callbacks;
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -21,11 +22,18 @@ export function useSSE(callbacks: SSECallbacks) {
     function connect() {
       es = new EventSource("/events");
 
-      es.addEventListener("open", () => setConnected(true));
+      es.addEventListener("open", () => {
+        setConnected(true);
+        retryCountRef.current = 0;
+      });
 
       es.addEventListener("note_added", (e) => {
         const note: Note = JSON.parse(e.data);
         cbRef.current.onNoteAdded(note);
+      });
+
+      es.addEventListener("note_updated", () => {
+        cbRef.current.onNotesUpdated();
       });
 
       es.addEventListener("notes_cleared", () => {
@@ -48,7 +56,12 @@ export function useSSE(callbacks: SSECallbacks) {
       es.onerror = () => {
         setConnected(false);
         es?.close();
-        retryTimeout = setTimeout(connect, 3000);
+        // Exponential backoff with jitter: min 3s, max 30s
+        const baseDelay = Math.min(3000 * Math.pow(2, retryCountRef.current), 30000);
+        const jitter = Math.random() * 1000;
+        const delay = baseDelay + jitter;
+        retryCountRef.current++;
+        retryTimeout = setTimeout(connect, delay);
       };
     }
 
