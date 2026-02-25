@@ -24,6 +24,8 @@ export default function App() {
     clearNotes,
     togglePin,
     toggleDone,
+    scope,
+    updateScope,
     reload,
   } = useNotes();
 
@@ -74,7 +76,7 @@ export default function App() {
   return (
     <>
       <ToastContainer toasts={toasts} />
-      <Header connected={connected} onClear={handleClear} />
+      <Header connected={connected} onClear={handleClear} scope={scope} onScopeChange={updateScope} />
       <TodoBoard sessions={sessions} teams={teams} />
       <FilterBar
         sources={sources}

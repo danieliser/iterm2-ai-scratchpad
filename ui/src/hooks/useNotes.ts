@@ -5,6 +5,9 @@ import { fetchNotes, clearAllNotes, updateNoteStatus } from "../lib/api";
 const PINNED_KEY = "scratchpad_pinned";
 const FILTER_KEY = "scratchpad_filter";
 const SORT_KEY = "scratchpad_sort";
+const SCOPE_KEY = "scratchpad_scope";
+
+export type NoteScope = "all" | "tab";
 
 export type FilterState = {
   source: string;
@@ -52,11 +55,17 @@ function loadSort(): SortOption {
   }
 }
 
+function loadScope(): NoteScope {
+  return (localStorage.getItem(SCOPE_KEY) as NoteScope) || "all";
+}
+
 export function useNotes() {
   const [notes, setNotes] = useState<NoteWithStatus[]>([]);
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinned);
   const [filter, setFilter] = useState<FilterState>(loadFilter);
   const [sort, setSort] = useState<SortOption>(loadSort);
+  const [scope, setScope] = useState<NoteScope>(loadScope);
+  const [sessionId, setSessionId] = useState("");
 
   const updateFilter = useCallback((newFilter: Partial<FilterState>) => {
     setFilter((prev) => {
@@ -74,14 +83,21 @@ export function useNotes() {
     });
   }, []);
 
+  const updateScope = useCallback((s: NoteScope) => {
+    setScope(s);
+    localStorage.setItem(SCOPE_KEY, s);
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      const loaded = await fetchNotes();
-      setNotes(loaded);
+      const session = scope === "tab" ? "current" : undefined;
+      const result = await fetchNotes(session);
+      setNotes(result.notes);
+      setSessionId(result.session_id);
     } catch (e) {
       console.error("Failed to load notes", e);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     load();
@@ -171,6 +187,9 @@ export function useNotes() {
     updateFilter,
     sort,
     updateSort,
+    scope,
+    updateScope,
+    sessionId,
     addNote,
     clearNotes,
     togglePin,

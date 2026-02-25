@@ -14,7 +14,7 @@ from aiohttp import web
 from .storage import (
     NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, DEFAULT_SESSION,
     get_current_session_id, get_start_time, get_session_summary,
-    load_notes, save_notes, load_all_notes,
+    load_notes, save_notes, load_all_notes, append_note, update_note_in_file,
 )
 from .streaming import broadcast, get_sse_clients, get_sse_lock
 from .ui import build_html
@@ -34,6 +34,8 @@ CORS_HEADERS = {
 def cors(response: web.Response, *, origin: str = "") -> web.Response:
     """Add CORS headers. Only allows localhost origins (for WebView)."""
     response.headers.update(CORS_HEADERS)
+    # Prevent WKWebView from caching API responses
+    response.headers["Cache-Control"] = "no-store"
     if origin in _ALLOWED_ORIGINS or origin == "null":
         response.headers["Access-Control-Allow-Origin"] = origin
     else:
@@ -57,7 +59,9 @@ async def handle_get_ui(request: web.Request) -> web.Response:
         return build_html()
 
     html = await asyncio.to_thread(_read_ui)
-    return cors(web.Response(content_type="text/html", text=html))
+    resp = web.Response(content_type="text/html", text=html)
+    resp.headers["Cache-Control"] = "no-store"
+    return cors(resp)
 
 
 async def handle_post_note(request: web.Request) -> web.Response:
@@ -89,9 +93,7 @@ async def handle_post_note(request: web.Request) -> web.Response:
         "metadata": body.get("metadata", {}),
     }
 
-    notes = await asyncio.to_thread(load_notes, session_id)
-    notes.append(note)
-    await asyncio.to_thread(save_notes, notes, session_id)
+    await asyncio.to_thread(append_note, note, session_id)
     log.info("Note added id=%s source=%s session=%s", note["id"], note["source"], session_id)
 
     await broadcast("note_added", note, event_id=note["id"])
@@ -104,10 +106,20 @@ async def handle_post_note(request: web.Request) -> web.Response:
 
 
 async def handle_get_notes(request: web.Request) -> web.Response:
-    notes = await asyncio.to_thread(load_all_notes)
+    session = request.query.get("session", "")
+    if session == "current":
+        session = get_current_session_id()
+    if session:
+        notes = await asyncio.to_thread(load_notes, session)
+    else:
+        notes = await asyncio.to_thread(load_all_notes)
     return cors(web.Response(
         content_type="application/json",
-        text=json.dumps({"notes": notes, "count": len(notes)}),
+        text=json.dumps({
+            "notes": notes,
+            "count": len(notes),
+            "session_id": get_current_session_id(),
+        }),
     ))
 
 
@@ -148,24 +160,7 @@ async def handle_patch_note(request: web.Request) -> web.Response:
     if new_status not in ("active", "done"):
         return cors(web.Response(status=400, text="status must be 'active' or 'done'"))
 
-    def _update_note():
-        if not NOTES_DIR.exists():
-            return None
-        for path in NOTES_DIR.glob("*.json"):
-            try:
-                notes = json.loads(path.read_text())
-                if not isinstance(notes, list):
-                    continue
-                for note in notes:
-                    if note.get("id") == note_id:
-                        note["status"] = new_status
-                        save_notes(notes, path.stem)
-                        return note
-            except Exception:
-                continue
-        return None
-
-    updated = await asyncio.to_thread(_update_note)
+    updated = await asyncio.to_thread(update_note_in_file, note_id, {"status": new_status})
     if updated is None:
         return cors(web.Response(status=404, text="Note not found"))
 

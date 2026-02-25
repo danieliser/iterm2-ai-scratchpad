@@ -87,6 +87,30 @@ body {
 .status { font-size: 10px; color: #6a9955; }
 .status.disconnected { color: var(--accent-red); }
 
+/* Scope toggle (All / Tab) */
+.scope-toggle {
+  display: flex;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.scope-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 1px 8px;
+  font-size: 9px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.scope-btn:hover { color: var(--text-primary); background: var(--bg-base); }
+.scope-btn.active {
+  color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+}
+
 /* Buttons */
 .btn {
   background: none;

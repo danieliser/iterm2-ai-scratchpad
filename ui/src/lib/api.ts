@@ -2,16 +2,37 @@ import type { Note, ExecResult } from "../types";
 
 const API = import.meta.env.DEV ? "" : "";
 
-export async function fetchNotes(): Promise<Note[]> {
-  try {
-    const r = await fetch(`${API}/api/notes`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    return data.notes ?? [];
-  } catch (e) {
-    console.error("fetchNotes failed:", e);
-    return [];
+export type NotesResponse = {
+  notes: Note[];
+  count: number;
+  session_id: string;
+};
+
+export async function fetchNotes(
+  session?: string,
+  retries = 3,
+): Promise<NotesResponse> {
+  const url = session
+    ? `${API}/api/notes?session=${encodeURIComponent(session)}`
+    : `${API}/api/notes`;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      return {
+        notes: data.notes ?? [],
+        count: data.count ?? 0,
+        session_id: data.session_id ?? "",
+      };
+    } catch (e) {
+      console.error(`fetchNotes attempt ${attempt + 1} failed:`, e);
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
   }
+  return { notes: [], count: 0, session_id: "" };
 }
 
 export async function clearAllNotes(): Promise<void> {

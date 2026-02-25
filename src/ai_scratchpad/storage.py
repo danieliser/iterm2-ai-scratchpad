@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -171,6 +172,19 @@ def get_session_summary(session_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Note persistence
 # ---------------------------------------------------------------------------
+# Per-session locks prevent read-modify-write races when concurrent
+# requests write to the same session file.
+_session_locks: dict[str, threading.Lock] = {}
+_session_locks_guard = threading.Lock()
+
+
+def _get_session_lock(session_id: str) -> threading.Lock:
+    with _session_locks_guard:
+        if session_id not in _session_locks:
+            _session_locks[session_id] = threading.Lock()
+        return _session_locks[session_id]
+
+
 def notes_path(session_id: str = DEFAULT_SESSION) -> Path:
     if not _SESSION_ID_RE.match(session_id):
         raise ValueError(f"Invalid session_id: {session_id!r}")
@@ -218,3 +232,37 @@ def save_notes(notes: list, session_id: str = DEFAULT_SESSION) -> None:
         os.close(fd)
         os.unlink(tmp)
         raise
+
+
+def append_note(note: dict, session_id: str = DEFAULT_SESSION) -> None:
+    """Atomically load→append→save a note. Prevents concurrent write races."""
+    lock = _get_session_lock(session_id)
+    with lock:
+        notes = load_notes(session_id)
+        notes.append(note)
+        save_notes(notes, session_id)
+
+
+def update_note_in_file(note_id: str, updates: dict) -> dict | None:
+    """Find a note across all session files and update it atomically.
+
+    Returns the updated note dict, or None if not found.
+    """
+    if not NOTES_DIR.exists():
+        return None
+    for path in NOTES_DIR.glob("*.json"):
+        sid = path.stem
+        lock = _get_session_lock(sid)
+        with lock:
+            try:
+                notes = json.loads(path.read_text())
+                if not isinstance(notes, list):
+                    continue
+                for note in notes:
+                    if note.get("id") == note_id:
+                        note.update(updates)
+                        save_notes(notes, sid)
+                        return note
+            except Exception:
+                continue
+    return None
