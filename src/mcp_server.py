@@ -20,10 +20,21 @@ mcp = FastMCP(
 
 def _default_source() -> str:
     """Derive a human-readable source from environment context."""
-    # Claude Code sets CLAUDE_SESSION_ID and sometimes subagent metadata
     cwd = os.environ.get("PWD", os.getcwd())
-    # Use the project directory name as the default label
     return os.path.basename(cwd) or "agent"
+
+
+def _iterm_session_id() -> str:
+    """Extract the iTerm2 session UUID from the agent's environment.
+
+    ITERM_SESSION_ID has format "w0t2p0:UUID" — we want just the UUID part.
+    This tells the server which terminal the agent is running in, so the note
+    gets tagged to the correct session regardless of which tab has UI focus.
+    """
+    raw = os.environ.get("ITERM_SESSION_ID", "")
+    if ":" in raw:
+        return raw.split(":", 1)[1]
+    return raw
 
 
 @mcp.tool()
@@ -76,7 +87,12 @@ def post_note(text: str, source: str = "agent") -> str:
     # Enrich source with project context when it's the generic default
     effective_source = source if source not in ("agent", "unknown", "") else _default_source()
 
-    payload = {"text": text, "source": effective_source}
+    payload: dict = {"text": text, "source": effective_source}
+
+    # Tag note to the agent's terminal session, not the focused tab
+    session_id = _iterm_session_id()
+    if session_id:
+        payload["session_id"] = session_id
 
     data = json.dumps(payload).encode()
     req = urllib.request.Request(

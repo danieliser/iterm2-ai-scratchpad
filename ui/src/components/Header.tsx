@@ -38,9 +38,9 @@ export function Header({
           <button
             className={`scope-btn${scope === "tab" ? " active" : ""}`}
             onClick={() => onScopeChange("tab")}
-            title="Show notes from current tab only"
+            title="Show notes from active session only"
           >
-            Tab
+            Active
           </button>
         </div>
         <span className={`status${connected ? "" : " disconnected"}`}>
@@ -52,7 +52,7 @@ export function Header({
       </div>
       <div className="header-meta">
         <span className="meta-session" title={sessionId}>
-          {scope === "tab" ? `tab: ${sessionLabel}` : "all sessions"}
+          {scope === "tab" ? `session: ${sessionLabel}` : "all sessions"}
         </span>
         <span className="meta-count">
           {noteCount}{noteCount !== totalCount ? ` / ${totalCount}` : ""} notes

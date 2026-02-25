@@ -77,7 +77,9 @@ async def handle_post_note(request: web.Request) -> web.Response:
     if len(text) > 100_000:
         return cors(web.Response(status=413, text="text too large (100KB max)"))
 
-    session_id = get_current_session_id()
+    # Use agent-provided session_id if available (from ITERM_SESSION_ID env var),
+    # otherwise fall back to the currently focused tab's session
+    session_id = body.get("session_id", "") or get_current_session_id()
 
     source = body.get("source", "unknown")
     if source in ("agent", "unknown", ""):
