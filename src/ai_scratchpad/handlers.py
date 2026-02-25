@@ -146,6 +146,46 @@ async def handle_delete_notes(request: web.Request) -> web.Response:
     ))
 
 
+async def handle_put_note(request: web.Request) -> web.Response:
+    """Replace a note's content (for live-updating status cards)."""
+    note_id = request.match_info.get("note_id", "")
+    if not note_id:
+        return cors(web.Response(status=400, text="note_id required"))
+
+    try:
+        body = await request.json()
+    except Exception:
+        return cors(web.Response(status=400, text="Invalid JSON"))
+
+    updates = {}
+    if "text" in body:
+        text = body["text"].strip()
+        if not text:
+            return cors(web.Response(status=400, text="text cannot be empty"))
+        if len(text) > 100_000:
+            return cors(web.Response(status=413, text="text too large (100KB max)"))
+        updates["text"] = text
+    if "source" in body:
+        updates["source"] = body["source"]
+    if "metadata" in body:
+        updates["metadata"] = body["metadata"]
+
+    if not updates:
+        return cors(web.Response(status=400, text="nothing to update"))
+
+    updated = await asyncio.to_thread(update_note_in_file, note_id, updates)
+    if updated is None:
+        return cors(web.Response(status=404, text="Note not found"))
+
+    log.info("Note replaced id=%s", note_id)
+    await broadcast("note_updated", updated, event_id=note_id)
+
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"status": "ok", "note": updated}),
+    ))
+
+
 async def handle_patch_note(request: web.Request) -> web.Response:
     """Update a note's status (active/done). Searches all session files."""
     note_id = request.match_info.get("note_id", "")

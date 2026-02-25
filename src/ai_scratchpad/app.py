@@ -10,7 +10,7 @@ from .storage import DEFAULT_SESSION, get_current_session_id, set_current_sessio
 from .streaming import broadcast, start_watchdog, start_todo_watchdog, set_event_loop
 from .handlers import (
     handle_options, handle_get_ui, handle_post_note, handle_get_notes,
-    handle_delete_notes, handle_patch_note, handle_get_session,
+    handle_delete_notes, handle_put_note, handle_patch_note, handle_get_session,
     handle_health, handle_sse, handle_run, handle_get_todos,
     handle_get_prefs, handle_put_prefs, _handle_favicon,
 )
@@ -25,6 +25,7 @@ def build_app() -> web.Application:
     app.router.add_post("/api/notes", handle_post_note)
     app.router.add_get("/api/notes", handle_get_notes)
     app.router.add_delete("/api/notes", handle_delete_notes)
+    app.router.add_put("/api/notes/{note_id}", handle_put_note)
     app.router.add_patch("/api/notes/{note_id}", handle_patch_note)
     app.router.add_get("/api/session", handle_get_session)
     app.router.add_get("/health", handle_health)

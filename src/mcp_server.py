@@ -6,6 +6,7 @@
 """MCP server for AI Scratchpad — lets Claude Code agents post notes."""
 
 import json
+import os
 import urllib.request
 from mcp.server.fastmcp import FastMCP
 
@@ -15,6 +16,14 @@ mcp = FastMCP(
     "ai-scratchpad",
     instructions="Post notes to the AI Scratchpad sidebar. Notes support markdown and rich widgets.",
 )
+
+
+def _default_source() -> str:
+    """Derive a human-readable source from environment context."""
+    # Claude Code sets CLAUDE_SESSION_ID and sometimes subagent metadata
+    cwd = os.environ.get("PWD", os.getcwd())
+    # Use the project directory name as the default label
+    return os.path.basename(cwd) or "agent"
 
 
 @mcp.tool()
@@ -64,7 +73,12 @@ def post_note(text: str, source: str = "agent") -> str:
         text: The note content (markdown + widgets)
         source: Label for who posted it (default: "agent")
     """
-    data = json.dumps({"text": text, "source": source}).encode()
+    # Enrich source with project context when it's the generic default
+    effective_source = source if source not in ("agent", "unknown", "") else _default_source()
+
+    payload = {"text": text, "source": effective_source}
+
+    data = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{SCRATCHPAD_URL}/api/notes",
         data=data,
@@ -76,6 +90,42 @@ def post_note(text: str, source: str = "agent") -> str:
         return f"Note posted (id={result.get('id', '?')})"
     except Exception:
         return "Note not posted — scratchpad server is not running. Continue without it."
+
+
+@mcp.tool()
+def update_note(note_id: str, text: str, source: str = "") -> str:
+    """Update an existing note's content. Use this to replace a note in-place
+    instead of posting a new one — ideal for status cards, progress indicators,
+    or any note that should refresh rather than duplicate.
+
+    Args:
+        note_id: The note ID returned by post_note (e.g. "abc-123...")
+        text: The new markdown + widget content to replace the note with
+        source: Optional new source label (omit to keep existing)
+    """
+    payload: dict = {"text": text}
+    if source:
+        payload["source"] = source
+
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        f"{SCRATCHPAD_URL}/api/notes/{note_id}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="PUT",
+    )
+    try:
+        resp = urllib.request.urlopen(req, timeout=2)
+        result = json.loads(resp.read())
+        if result.get("status") == "ok":
+            return f"Note updated (id={note_id})"
+        return f"Update failed: {result}"
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return f"Note {note_id} not found — it may have been cleared. Post a new note instead."
+        return f"Update failed (HTTP {e.code})"
+    except Exception:
+        return "Update failed — scratchpad server is not running. Continue without it."
 
 
 if __name__ == "__main__":
