@@ -6,13 +6,13 @@ import logging
 from aiohttp import web
 
 from . import ITERM2_AVAILABLE, _iterm2, LOG_PATH
-from .storage import DEFAULT_SESSION, get_current_session_id, set_current_session_id
+from .storage import DEFAULT_SESSION, get_current_session_id, set_current_session_id, set_iterm2_connection
 from .streaming import broadcast, start_watchdog, start_todo_watchdog, set_event_loop
 from .handlers import (
     handle_options, handle_get_ui, handle_post_note, handle_get_notes,
     handle_delete_notes, handle_put_note, handle_patch_note, handle_get_session,
-    handle_health, handle_sse, handle_run, handle_get_todos,
-    handle_get_prefs, handle_put_prefs, _handle_favicon,
+    handle_activate_session, handle_health, handle_sse, handle_run,
+    handle_get_todos, handle_get_prefs, handle_put_prefs, _handle_favicon,
 )
 
 log = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ def build_app() -> web.Application:
     app.router.add_put("/api/notes/{note_id}", handle_put_note)
     app.router.add_patch("/api/notes/{note_id}", handle_patch_note)
     app.router.add_get("/api/session", handle_get_session)
+    app.router.add_post("/api/sessions/{session_id}/activate", handle_activate_session)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)
     app.router.add_post("/api/exec", handle_run)
@@ -44,6 +45,8 @@ async def _session_monitor(connection) -> None:
     Uses FocusMonitor (not LayoutChangeMonitor) because tab switches
     are focus events, not layout events.
     """
+
+    set_iterm2_connection(connection)
 
     try:
         app = await _iterm2.async_get_app(connection)

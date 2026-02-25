@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { Note } from "../types";
 import { formatTime } from "../lib/format";
 import { parseNoteContent } from "../lib/markdown";
+import { activateSession } from "../lib/api";
 
 interface NoteWithStatus extends Note {
   status?: "active" | "done";
@@ -32,6 +33,15 @@ function NoteCardComponent({
     setTimeout(() => setCopied(false), 1500);
   }, [note.text]);
 
+  const handleSourceClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (note.session_id && note.session_id !== "default") {
+      activateSession(note.session_id);
+    }
+  }, [note.session_id]);
+
+  const hasSession = note.session_id && note.session_id !== "default";
+
   const content = useMemo(() => parseNoteContent(note.text), [note.text]);
 
   const preview = useMemo(() => {
@@ -51,7 +61,13 @@ function NoteCardComponent({
         exit={{ opacity: 0, height: 0, marginBottom: 0 }}
         transition={springTransition}
       >
-        <span className="note-source">{note.source || "unknown"}</span>
+        {hasSession ? (
+          <button className="note-source clickable" onClick={handleSourceClick} title="Jump to tab">
+            {note.source || "unknown"}
+          </button>
+        ) : (
+          <span className="note-source">{note.source || "unknown"}</span>
+        )}
         <span className="note-preview">{preview}</span>
         <span className="note-time" title={note.timestamp}>
           {formatTime(note.timestamp)}
@@ -80,7 +96,13 @@ function NoteCardComponent({
       transition={springTransition}
     >
       <div className="note-meta">
-        <span className="note-source">{note.source || "unknown"}</span>
+        {hasSession ? (
+          <button className="note-source clickable" onClick={handleSourceClick} title="Jump to tab">
+            {note.source || "unknown"}
+          </button>
+        ) : (
+          <span className="note-source">{note.source || "unknown"}</span>
+        )}
         <span className="note-time" title={note.timestamp}>
           {formatTime(note.timestamp)}
         </span>
