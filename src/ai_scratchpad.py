@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["aiohttp>=3.9"]
+# [tool.uv.sources]
+# ///
 """
 iTerm2 AI Scratchpad — aiohttp server with embedded HTML UI.
 Posts notes from AI agents, displays in iTerm2 Toolbelt sidebar.
@@ -11,8 +16,11 @@ os.environ.pop("PYTHONPATH", None)
 import asyncio
 import json
 import logging
+import re
+import shlex
 import tempfile
 import threading
+import time as _time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,7 +88,17 @@ def _load_summary_cache() -> dict:
 
 def _save_summary_cache() -> None:
     SUMMARY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SUMMARY_CACHE_PATH.write_text(json.dumps(_summary_cache, indent=2))
+    data = json.dumps(_summary_cache, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=SUMMARY_CACHE_PATH.parent, prefix=".cache_tmp_")
+    try:
+        os.write(fd, data.encode())
+        os.fsync(fd)
+        os.close(fd)
+        os.replace(tmp, SUMMARY_CACHE_PATH)
+    except Exception:
+        os.close(fd)
+        os.unlink(tmp)
+        raise
 
 
 def _extract_command_name(content: str) -> str:
@@ -195,7 +213,12 @@ def get_current_session_id() -> str:
     return _current_session_id
 
 
+_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
 def notes_path(session_id: str = DEFAULT_SESSION) -> Path:
+    if not _SESSION_ID_RE.match(session_id):
+        raise ValueError(f"Invalid session_id: {session_id!r}")
     return NOTES_DIR / f"{session_id}.json"
 
 
@@ -208,6 +231,22 @@ def load_notes(session_id: str = DEFAULT_SESSION) -> list:
     except Exception as exc:
         log.error("Failed to read notes from %s: %s", path, exc)
         return []
+
+
+def load_all_notes() -> list:
+    """Load and merge notes from ALL session files, sorted by timestamp."""
+    all_notes = []
+    if not NOTES_DIR.exists():
+        return []
+    for path in NOTES_DIR.glob("*.json"):
+        try:
+            notes = json.loads(path.read_text())
+            if isinstance(notes, list):
+                all_notes.extend(notes)
+        except Exception as exc:
+            log.error("Failed to read notes from %s: %s", path, exc)
+    all_notes.sort(key=lambda n: n.get("timestamp", ""))
+    return all_notes
 
 
 def save_notes(notes: list, session_id: str = DEFAULT_SESSION) -> None:
@@ -231,17 +270,20 @@ def save_notes(notes: list, session_id: str = DEFAULT_SESSION) -> None:
 # SSE broadcast
 # ---------------------------------------------------------------------------
 _sse_clients: set = set()
+_sse_lock = asyncio.Lock()
 
 
-async def broadcast(event_type: str, data: dict) -> None:
-    payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+async def broadcast(event_type: str, data: dict, event_id: str = "") -> None:
+    id_line = f"id: {event_id}\n" if event_id else ""
+    payload = f"{id_line}event: {event_type}\ndata: {json.dumps(data)}\n\n"
     dead = set()
-    for resp in list(_sse_clients):
-        try:
-            await resp.write(payload.encode())
-        except Exception:
-            dead.add(resp)
-    _sse_clients.difference_update(dead)
+    async with _sse_lock:
+        for resp in list(_sse_clients):
+            try:
+                await resp.write(payload.encode())
+            except Exception:
+                dead.add(resp)
+        _sse_clients.difference_update(dead)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +315,7 @@ if WATCHDOG_AVAILABLE:
                     existing.cancel()
                 timer = threading.Timer(0.15, self._fire, args=(path,))
                 _debounce_timers[path] = timer
-            timer.start()
+                timer.start()
 
         def _fire(self, path: str) -> None:
             with _debounce_lock:
@@ -303,7 +345,7 @@ if WATCHDOG_AVAILABLE:
                     existing.cancel()
                 timer = threading.Timer(0.15, self._fire, args=(path,))
                 _debounce_timers[key] = timer
-            timer.start()
+                timer.start()
 
         def _fire(self, path: str) -> None:
             key = f"todo:{path}"
@@ -352,15 +394,22 @@ def start_todo_watchdog() -> "Observer | None":
 # ---------------------------------------------------------------------------
 # CORS helper
 # ---------------------------------------------------------------------------
+_ALLOWED_ORIGINS = {"http://localhost:9999", "http://127.0.0.1:9999"}
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, PATCH, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
 }
 
 
-def cors(response: web.Response) -> web.Response:
+def cors(response: web.Response, *, origin: str = "") -> web.Response:
+    """Add CORS headers. Only allows localhost origins (for WebView)."""
     response.headers.update(CORS_HEADERS)
+    # Allow null origin for file:// and embedded WebView contexts
+    if origin in _ALLOWED_ORIGINS or origin == "null":
+        response.headers["Access-Control-Allow-Origin"] = origin
+    else:
+        # Default to localhost for same-origin requests (no Origin header)
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:9999"
     return response
 
 
@@ -374,10 +423,13 @@ async def handle_options(request: web.Request) -> web.Response:
 async def handle_get_ui(request: web.Request) -> web.Response:
     # Prefer pre-built React UI from ui/dist/index.html
     dist_html = Path(__file__).resolve().parent.parent / "ui" / "dist" / "index.html"
-    if dist_html.exists():
-        html = dist_html.read_text()
-    else:
-        html = build_html()
+
+    def _read_ui():
+        if dist_html.exists():
+            return dist_html.read_text()
+        return build_html()
+
+    html = await asyncio.to_thread(_read_ui)
     return cors(web.Response(content_type="text/html", text=html))
 
 
@@ -390,22 +442,33 @@ async def handle_post_note(request: web.Request) -> web.Response:
     text = body.get("text", "").strip()
     if not text:
         return cors(web.Response(status=400, text="text is required"))
+    if len(text) > 100_000:
+        return cors(web.Response(status=413, text="text too large (100KB max)"))
 
     session_id = get_current_session_id()
+
+    # Auto-enrich generic source labels with session context
+    source = body.get("source", "unknown")
+    if source in ("agent", "unknown", ""):
+        prefix = session_id[:8] if session_id != DEFAULT_SESSION else "default"
+        subagent = body.get("metadata", {}).get("subagent_name", "")
+        source = f"{prefix}:{subagent}" if subagent else prefix
+
     note = {
         "id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "text": text,
-        "source": body.get("source", "unknown"),
+        "source": source,
+        "status": "active",
         "metadata": body.get("metadata", {}),
     }
 
-    notes = load_notes(session_id)
+    notes = await asyncio.to_thread(load_notes, session_id)
     notes.append(note)
-    save_notes(notes, session_id)
+    await asyncio.to_thread(save_notes, notes, session_id)
     log.info("Note added id=%s source=%s session=%s", note["id"], note["source"], session_id)
 
-    await broadcast("note_added", note)
+    await broadcast("note_added", note, event_id=note["id"])
 
     return cors(web.Response(
         status=201,
@@ -415,25 +478,79 @@ async def handle_post_note(request: web.Request) -> web.Response:
 
 
 async def handle_get_notes(request: web.Request) -> web.Response:
-    # Allow explicit session_id override via query param
-    session_id = request.rel_url.query.get("session_id") or get_current_session_id()
-    notes = load_notes(session_id)
+    # Scratchpad shows same content across all tabs — merge all sessions
+    notes = await asyncio.to_thread(load_all_notes)
     return cors(web.Response(
         content_type="application/json",
-        text=json.dumps({"notes": notes, "session_id": session_id, "count": len(notes)}),
+        text=json.dumps({"notes": notes, "count": len(notes)}),
     ))
 
 
 async def handle_delete_notes(request: web.Request) -> web.Response:
-    session_id = get_current_session_id()
-    notes = load_notes(session_id)
-    cleared = len(notes)
-    save_notes([], session_id)
-    log.info("All notes cleared session=%s count=%d", session_id, cleared)
+    def _clear_all():
+        count = 0
+        if NOTES_DIR.exists():
+            for path in NOTES_DIR.glob("*.json"):
+                try:
+                    notes = json.loads(path.read_text())
+                    count += len(notes) if isinstance(notes, list) else 0
+                    path.write_text("[]")
+                except Exception:
+                    pass
+        return count
+
+    cleared = await asyncio.to_thread(_clear_all)
+    log.info("All notes cleared count=%d", cleared)
     await broadcast("notes_cleared", {})
     return cors(web.Response(
         content_type="application/json",
         text=json.dumps({"status": "ok", "cleared": cleared}),
+    ))
+
+
+async def handle_patch_note(request: web.Request) -> web.Response:
+    """Update a note's status (active/done). Searches all session files."""
+    note_id = request.match_info.get("note_id", "")
+    if not note_id:
+        return cors(web.Response(status=400, text="note_id required"))
+
+    try:
+        body = await request.json()
+    except Exception:
+        return cors(web.Response(status=400, text="Invalid JSON"))
+
+    new_status = body.get("status")
+    if new_status not in ("active", "done"):
+        return cors(web.Response(status=400, text="status must be 'active' or 'done'"))
+
+    def _update_note():
+        """Find note across all session files and update its status."""
+        if not NOTES_DIR.exists():
+            return None
+        for path in NOTES_DIR.glob("*.json"):
+            try:
+                notes = json.loads(path.read_text())
+                if not isinstance(notes, list):
+                    continue
+                for note in notes:
+                    if note.get("id") == note_id:
+                        note["status"] = new_status
+                        save_notes(notes, path.stem)
+                        return note
+            except Exception:
+                continue
+        return None
+
+    updated = await asyncio.to_thread(_update_note)
+    if updated is None:
+        return cors(web.Response(status=404, text="Note not found"))
+
+    log.info("Note updated id=%s status=%s", note_id, new_status)
+    await broadcast("note_updated", updated, event_id=note_id)
+
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"status": "ok", "note": updated}),
     ))
 
 
@@ -444,52 +561,96 @@ async def handle_get_session(request: web.Request) -> web.Response:
     ))
 
 
+# Rate limiter for /api/exec
+_exec_timestamps: list = []
+_EXEC_RATE_LIMIT = 30  # per minute
+_BG_PROC_TIMEOUT = 300  # 5 minutes
+
+
+async def _cleanup_bg_proc(proc: asyncio.subprocess.Process) -> None:
+    """Kill background process after timeout."""
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=_BG_PROC_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        log.warning("Background process pid=%d killed after %ds timeout", proc.pid, _BG_PROC_TIMEOUT)
+
+
 async def handle_exec(request: web.Request) -> web.Response:
-    """Execute a command and return output. localhost-only, same trust model as the CLI."""
+    """Execute a command and return output. No CORS — localhost WebView only."""
+    # Origin validation — reject cross-origin requests entirely
+    origin = request.headers.get("Origin", "")
+    if origin and origin not in _ALLOWED_ORIGINS and origin != "null":
+        return web.Response(status=403, text='{"error":"forbidden"}', content_type="application/json")
+
+    # Rate limiting
+    now = _time.time()
+    _exec_timestamps[:] = [t for t in _exec_timestamps if now - t < 60]
+    if len(_exec_timestamps) >= _EXEC_RATE_LIMIT:
+        return web.Response(status=429, text='{"error":"rate limited"}', content_type="application/json")
+    _exec_timestamps.append(now)
+
     try:
         body = await request.json()
     except Exception:
-        return cors(web.Response(status=400, text='{"error":"invalid json"}', content_type="application/json"))
+        return web.Response(status=400, text='{"error":"invalid json"}', content_type="application/json")
     cmd = body.get("command", "").strip()
     if not cmd:
-        return cors(web.Response(status=400, text='{"error":"no command"}', content_type="application/json"))
-    bg = body.get("background", False)
+        return web.Response(status=400, text='{"error":"no command"}', content_type="application/json")
+
+    # Validate cwd — must resolve under $HOME
     cwd = body.get("cwd") or str(Path.home())
+    try:
+        resolved_cwd = Path(cwd).resolve()
+        if not str(resolved_cwd).startswith(str(Path.home())):
+            return web.Response(status=403, text='{"error":"cwd outside home"}', content_type="application/json")
+        cwd = str(resolved_cwd)
+    except (ValueError, RuntimeError):
+        return web.Response(status=400, text='{"error":"invalid cwd"}', content_type="application/json")
+
+    # Parse command safely
+    try:
+        args = shlex.split(cmd)
+    except ValueError:
+        return web.Response(status=400, text='{"error":"invalid command syntax"}', content_type="application/json")
+
+    bg = body.get("background", False)
 
     if bg:
-        proc = await asyncio.create_subprocess_shell(
-            cmd, cwd=cwd,
+        proc = await asyncio.create_subprocess_exec(
+            *args, cwd=cwd,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        return cors(web.Response(
+        asyncio.create_task(_cleanup_bg_proc(proc))
+        return web.Response(
             content_type="application/json",
             text=json.dumps({"status": "started", "pid": proc.pid}),
-        ))
+        )
 
     timeout = min(body.get("timeout", 30), 120)
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd, cwd=cwd,
+        proc = await asyncio.create_subprocess_exec(
+            *args, cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         output = stdout.decode("utf-8", errors="replace")[-10000:]
-        return cors(web.Response(
+        return web.Response(
             content_type="application/json",
             text=json.dumps({
                 "status": "completed",
                 "exit_code": proc.returncode,
                 "output": output,
             }),
-        ))
+        )
     except asyncio.TimeoutError:
         proc.kill()
-        return cors(web.Response(
+        return web.Response(
             content_type="application/json",
             text=json.dumps({"status": "timeout", "error": f"Command exceeded {timeout}s timeout"}),
-        ))
+        )
 
 
 async def handle_get_todos(_request: web.Request) -> web.Response:
@@ -498,80 +659,80 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
     Only returns sessions/teams modified within the last 2 hours —
     older files are abandoned sessions whose pending items will never complete.
     """
-    import time
-    sessions = []
-    teams = []
-    max_age = 2 * 3600  # 2 hours — anything older is a dead session
-    now = time.time()
+    def _scan_todos():
+        sessions = []
+        teams = []
+        max_age = 2 * 3600
+        now = _time.time()
 
-    # Scan ~/.claude/todos/ — only recent, non-empty files
-    if CLAUDE_TODOS_DIR.exists():
-        # Pre-filter by file size to skip empty arrays (avoids reading 7000+ files)
-        files = sorted(
-            (f for f in CLAUDE_TODOS_DIR.iterdir()
-             if f.suffix == ".json" and f.stat().st_size > 10),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True,
-        )
-        for f in files[:20]:
-            try:
-                mtime = f.stat().st_mtime
-                if now - mtime > max_age:
-                    break  # Files are sorted by mtime, so all remaining are older
-                data = json.loads(f.read_text())
-                if not data:
-                    continue
-                has_active = any(
-                    item.get("status") != "completed"
-                    for item in data
-                    if isinstance(item, dict)
-                )
-                if not has_active:
-                    continue
-                sid = f.stem.split("-agent-")[0] if "-agent-" in f.stem else f.stem
-                sessions.append({
-                    "file": f.name,
-                    "session_id": sid,
-                    "summary": get_session_summary(sid),
-                    "items": data,
-                    "has_active": has_active,
-                    "mtime": mtime,
-                })
-                if len(sessions) >= 5:
-                    break
-            except Exception:
-                continue
-
-    # Scan ~/.claude/tasks/ — only recent teams with active tasks
-    if CLAUDE_TASKS_DIR.exists():
-        for team_dir in sorted(
-            (d for d in CLAUDE_TASKS_DIR.iterdir() if d.is_dir()),
-            key=lambda d: d.stat().st_mtime,
-            reverse=True,
-        )[:5]:
-            if now - team_dir.stat().st_mtime > max_age:
-                break
-            tasks = []
-            for tf in team_dir.glob("*.json"):
+        if CLAUDE_TODOS_DIR.exists():
+            files = sorted(
+                (f for f in CLAUDE_TODOS_DIR.iterdir()
+                 if f.suffix == ".json" and f.stat().st_size > 10),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+            for f in files[:20]:
                 try:
-                    task = json.loads(tf.read_text())
-                    if isinstance(task, dict) and task.get("status") != "deleted":
-                        tasks.append(task)
+                    mtime = f.stat().st_mtime
+                    if now - mtime > max_age:
+                        break
+                    data = json.loads(f.read_text())
+                    if not data:
+                        continue
+                    has_active = any(
+                        item.get("status") != "completed"
+                        for item in data
+                        if isinstance(item, dict)
+                    )
+                    if not has_active:
+                        continue
+                    sid = f.stem.split("-agent-")[0] if "-agent-" in f.stem else f.stem
+                    sessions.append({
+                        "file": f.name,
+                        "session_id": sid,
+                        "summary": get_session_summary(sid),
+                        "items": data,
+                        "has_active": has_active,
+                        "mtime": mtime,
+                    })
+                    if len(sessions) >= 5:
+                        break
                 except Exception:
                     continue
-            active_tasks = [t for t in tasks if t.get("status") != "completed"]
-            if tasks and active_tasks:
-                team_id = team_dir.name
-                teams.append({
-                    "team": team_id,
-                    "summary": get_session_summary(team_id),
-                    "tasks": sorted(tasks, key=lambda t: int(t.get("id", 0))),
-                    "mtime": team_dir.stat().st_mtime,
-                })
 
+        if CLAUDE_TASKS_DIR.exists():
+            for team_dir in sorted(
+                (d for d in CLAUDE_TASKS_DIR.iterdir() if d.is_dir()),
+                key=lambda d: d.stat().st_mtime,
+                reverse=True,
+            )[:5]:
+                if now - team_dir.stat().st_mtime > max_age:
+                    break
+                tasks = []
+                for tf in team_dir.glob("*.json"):
+                    try:
+                        task = json.loads(tf.read_text())
+                        if isinstance(task, dict) and task.get("status") != "deleted":
+                            tasks.append(task)
+                    except Exception:
+                        continue
+                active_tasks = [t for t in tasks if t.get("status") != "completed"]
+                if tasks and active_tasks:
+                    team_id = team_dir.name
+                    teams.append({
+                        "team": team_id,
+                        "summary": get_session_summary(team_id),
+                        "tasks": sorted(tasks, key=lambda t: int(t.get("id", 0))),
+                        "mtime": team_dir.stat().st_mtime,
+                    })
+
+        return {"sessions": sessions, "teams": teams}
+
+    result = await asyncio.to_thread(_scan_todos)
     return cors(web.Response(
         content_type="application/json",
-        text=json.dumps({"sessions": sessions, "teams": teams}),
+        text=json.dumps(result),
     ))
 
 
@@ -602,7 +763,8 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
         **CORS_HEADERS,
     })
     await resp.prepare(request)
-    _sse_clients.add(resp)
+    async with _sse_lock:
+        _sse_clients.add(resp)
     log.info("SSE client connected (total=%d)", len(_sse_clients))
 
     # Send a keepalive comment so the client knows we're live
@@ -615,7 +777,8 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
     except (asyncio.CancelledError, ConnectionResetError):
         pass
     finally:
-        _sse_clients.discard(resp)
+        async with _sse_lock:
+            _sse_clients.discard(resp)
         log.info("SSE client disconnected (total=%d)", len(_sse_clients))
 
     return resp
@@ -1502,12 +1665,13 @@ connectSSE();
 # App factory
 # ---------------------------------------------------------------------------
 def build_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=1_000_000)  # 1MB request limit
     app.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
     app.router.add_get("/", handle_get_ui)
     app.router.add_post("/api/notes", handle_post_note)
     app.router.add_get("/api/notes", handle_get_notes)
     app.router.add_delete("/api/notes", handle_delete_notes)
+    app.router.add_patch("/api/notes/{note_id}", handle_patch_note)
     app.router.add_get("/api/session", handle_get_session)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/events", handle_sse)

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["mcp[cli]>=1.0"]
+# ///
 """MCP server for AI Scratchpad — lets Claude Code agents post notes."""
 
 import json
@@ -67,7 +71,7 @@ def post_note(text: str, source: str = "agent") -> str:
         headers={"Content-Type": "application/json"},
     )
     try:
-        resp = urllib.request.urlopen(req, timeout=5)
+        resp = urllib.request.urlopen(req, timeout=2)
         result = json.loads(resp.read())
         return f"Note posted (id={result.get('id', '?')})"
     except Exception:
