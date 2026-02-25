@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { NoteScope } from "../hooks/useNotes";
-import type { Theme } from "../hooks/useTheme";
+import type { Style, Scheme } from "../hooks/useTheme";
 import { openInBrowser, isInToolbelt } from "../lib/api";
 
 interface Props {
@@ -11,8 +11,10 @@ interface Props {
   sessionId: string;
   noteCount: number;
   totalCount: number;
-  theme: Theme;
-  onToggleTheme: () => void;
+  style: Style;
+  scheme: Scheme;
+  onCycleStyle: () => void;
+  onCycleScheme: () => void;
   filtersVisible: boolean;
   onToggleFilters: () => void;
 }
@@ -25,8 +27,10 @@ export function Header({
   sessionId,
   noteCount,
   totalCount,
-  theme,
-  onToggleTheme,
+  style,
+  scheme,
+  onCycleStyle,
+  onCycleScheme,
   filtersVisible,
   onToggleFilters,
 }: Props) {
@@ -70,11 +74,19 @@ export function Header({
           )}
           <button
             className="icon-btn"
-            onClick={onToggleTheme}
-            title={`Theme: ${theme}`}
-            aria-label="Cycle theme"
+            onClick={onCycleScheme}
+            title={`Scheme: ${scheme}`}
+            aria-label="Cycle color scheme"
           >
-            {theme === "auto" ? "◎" : theme === "light" ? "☀" : theme === "cockpit" ? "◐" : "◑"}
+            {scheme === "auto" ? "◎" : scheme === "light" ? "☀" : "☾"}
+          </button>
+          <button
+            className="icon-btn"
+            onClick={onCycleStyle}
+            title={`Style: ${style}`}
+            aria-label="Cycle style"
+          >
+            {style === "cockpit" ? "◐" : "◑"}
           </button>
         </div>
       </div>
