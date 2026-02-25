@@ -23,29 +23,27 @@ fail()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 
 echo -e "\n${BOLD}AI Scratchpad — iTerm2 + Claude Code installer${NC}\n"
 
-# ── Locate or clone the repo ────────────────────────────────────────
+# ── Download / locate the project ─────────────────────────────────
 
 REPO_DIR=""
+TARBALL_URL="https://github.com/danieliser/iterm2-ai-scratchpad/archive/master.tar.gz"
 
 # If run locally (not piped), check if we're inside the repo
 if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != "bash" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
     if [[ -f "$SCRIPT_DIR/src/launch.py" ]]; then
         REPO_DIR="$SCRIPT_DIR"
-        info "Using local repo at $REPO_DIR"
+        info "Using local copy at $REPO_DIR"
     fi
 fi
 
-# Otherwise, clone or update
+# Otherwise, download tarball (no git required)
 if [[ -z "$REPO_DIR" ]]; then
     REPO_DIR="$HOME/.local/share/ai-scratchpad"
-    if [[ -d "$REPO_DIR/.git" ]]; then
-        info "Updating existing install at $REPO_DIR"
-        git -C "$REPO_DIR" pull --quiet
-    else
-        info "Cloning to $REPO_DIR"
-        git clone --quiet https://github.com/danieliser/iterm2-ai-scratchpad.git "$REPO_DIR"
-    fi
+    info "Downloading to $REPO_DIR"
+    mkdir -p "$REPO_DIR"
+    curl -fsSL "$TARBALL_URL" | tar xz -C "$REPO_DIR" --strip-components=1
+    ok "Downloaded"
 fi
 
 # ── Check iTerm2 ────────────────────────────────────────────────────
