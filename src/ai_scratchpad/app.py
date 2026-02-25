@@ -39,7 +39,11 @@ def build_app() -> web.Application:
 
 
 async def _session_monitor(connection) -> None:
-    """Watch iTerm2 layout changes and keep _current_session_id current."""
+    """Watch iTerm2 focus changes and keep _current_session_id current.
+
+    Uses FocusMonitor (not LayoutChangeMonitor) because tab switches
+    are focus events, not layout events.
+    """
 
     try:
         app = await _iterm2.async_get_app(connection)
@@ -69,15 +73,17 @@ async def _session_monitor(connection) -> None:
     except Exception as exc:
         log.error("Failed to set initial session: %s", exc)
 
-    async with _iterm2.LayoutChangeMonitor(connection) as monitor:
+    async with _iterm2.FocusMonitor(connection) as monitor:
         while True:
             try:
-                await monitor.async_get()
-                new_id = _pick_active_session()
-                if new_id != get_current_session_id():
-                    log.info("Session changed: %s -> %s", get_current_session_id(), new_id)
-                    set_current_session_id(new_id)
-                    await broadcast("session_changed", {"session_id": new_id})
+                update = await monitor.async_get_next_update()
+                # React to tab switches and session focus changes
+                if update.selected_tab_changed or update.active_session_changed:
+                    new_id = _pick_active_session()
+                    if new_id != get_current_session_id():
+                        log.info("Session changed: %s -> %s", get_current_session_id(), new_id)
+                        set_current_session_id(new_id)
+                        await broadcast("session_changed", {"session_id": new_id})
             except asyncio.CancelledError:
                 break
             except Exception as exc:

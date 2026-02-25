@@ -203,19 +203,31 @@ def load_notes(session_id: str = DEFAULT_SESSION) -> list:
         return []
 
 
-def load_all_notes() -> list:
-    """Load and merge notes from ALL session files, sorted by timestamp."""
+def load_all_notes(max_age_hours: int = 24, max_notes: int = 200) -> list:
+    """Load and merge notes from ALL session files, sorted by timestamp.
+
+    Filters to notes from the last *max_age_hours* and caps at *max_notes*
+    (most recent first) to prevent stale history from cluttering the UI.
+    """
     all_notes = []
     if not NOTES_DIR.exists():
         return []
+
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+
     for path in NOTES_DIR.glob("*.json"):
         try:
             notes = json.loads(path.read_text())
             if isinstance(notes, list):
-                all_notes.extend(notes)
+                for n in notes:
+                    if n.get("timestamp", "") >= cutoff:
+                        all_notes.append(n)
         except Exception as exc:
             log.error("Failed to read notes from %s: %s", path, exc)
     all_notes.sort(key=lambda n: n.get("timestamp", ""))
+    if len(all_notes) > max_notes:
+        all_notes = all_notes[-max_notes:]
     return all_notes
 
 
