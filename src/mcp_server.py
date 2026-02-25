@@ -14,7 +14,38 @@ SCRATCHPAD_URL = "http://localhost:9999"
 
 mcp = FastMCP(
     "ai-scratchpad",
-    instructions="Post notes to the AI Scratchpad sidebar. Notes support markdown and rich widgets.",
+    instructions="""\
+Post notes to the AI Scratchpad sidebar. Notes support markdown and rich widgets.
+
+## When to use it
+
+- **Status updates** — post progress on multi-step tasks so the user can glance at the sidebar
+- **Build/deploy results** — badges and progress bars for pipeline status
+- **Data summaries** — key-value pairs, metrics, charts for quick reference
+- **Architecture notes** — mermaid diagrams, file trees when explaining structure
+- **Runnable commands** — give the user clickable run buttons for common operations
+- **Task tracking** — todo checklists for complex work
+
+## When NOT to use it
+
+- Don't post every minor action — it's a dashboard, not a log stream
+- Don't duplicate what's already visible in the terminal output
+- If the scratchpad server isn't running, the tool returns a graceful error — just continue without it
+
+## Source labels
+
+Use the `source` parameter to categorize notes for filtering:
+- `"agent"` — general agent output (default)
+- `"ci"` — build/deploy/pipeline status
+- `"monitor"` — health checks, metrics, port status
+- `"debug"` — debugging sessions, error analysis
+
+## Updating notes
+
+`post_note` returns an ID. Use `update_note(note_id, text)` to replace a note's \
+content in-place — ideal for status cards, progress indicators, or anything that \
+should refresh rather than duplicate.\
+""",
 )
 
 
