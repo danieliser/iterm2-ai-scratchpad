@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import shlex
 import time as _time
 import uuid
@@ -52,6 +53,11 @@ async def handle_options(request: web.Request) -> web.Response:
 
 
 async def handle_get_ui(request: web.Request) -> web.Response:
+    # In dev mode, redirect to Vite dev server for HMR
+    if os.environ.get("SCRATCHPAD_DEV"):
+        vite_url = os.environ.get("SCRATCHPAD_VITE_URL", "http://localhost:5173")
+        raise web.HTTPFound(vite_url)
+
     dist_html = Path(__file__).resolve().parent.parent.parent / "ui" / "dist" / "index.html"
 
     def _read_ui():
