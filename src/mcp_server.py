@@ -104,13 +104,18 @@ def post_note(text: str, source: str = "agent") -> str:
     - [clip:Button Label]text to copy[/clip] — click-to-copy
 
     **Rich Content:**
-    - [link:Title:https://example.com] — clickable link card
+    - [link:Title:https://example.com] — clickable link card (opens in browser)
+    - [link:Open in Cursor:cursor://file/absolute/path/to/file.ts] — open file in Cursor
     - [tree]src/\\n  src/main.ts\\n  src/lib/[/tree] — file tree (dirs end with /)
     - [chart:10,45,30,80:Requests/s] — sparkline chart, label optional
     - [deadline:2026-03-01T00:00:00:Launch day] — countdown to date, label optional
     - [ports:3000,5432,9999] — live port status monitor
     - [mermaid]graph LR\\n  A-->B[/mermaid] — mermaid diagram
     - [run:Label]shell command[/run] — executable command with Run/BG buttons
+
+    **Links:** The `[link]` widget opens URLs via macOS `open` command, so any URL
+    scheme works — `https://`, `cursor://file/...`, `vscode://file/...`, etc.
+    Use absolute paths for editor links (e.g. `cursor://file/Users/name/project/src/file.ts`).
 
     **Combinable:** Mix markdown and widgets freely in a single note.
 

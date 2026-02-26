@@ -47,7 +47,8 @@ Two forms: inline `[type:arg1:arg2]` and block `[type]content[/type]`.
 - `[timer:5m:Label]` — countdown (5m, 1h30m, 90s)
 - `[deadline:2026-03-01T00:00:00:Label]` — date countdown
 - `[chart:10,45,30,80:Label]` — sparkline
-- `[link:Title:https://url]` — clickable link card
+- `[link:Title:https://url]` — clickable link card (opens via macOS `open`)
+- `[link:Open in Cursor:cursor://file/absolute/path]` — editor deeplinks work too
 - `[ports:3000,5432]` — live port status
 
 **Block widgets:**
