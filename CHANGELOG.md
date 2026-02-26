@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.1] - 2026-02-25
+
+### Fixed
+
+- **CSS specificity bug** — cockpit dark theme variables were only declared in `:root`, causing light-scheme values to persist when switching themes. All color variables now redeclared at attribute-selector specificity.
+- **Run widget scrollbar** — long commands showed an ugly horizontal scrollbar; now truncated with ellipsis.
+- **TypeScript build errors** — fixed React 19 `useRef()` requiring initial argument, typed CDN mermaid import, added `showDismissed` to Prefs type.
+
+### Changed
+
+- **README broadened** — no longer Claude Code-specific. Documents MCP setup for any compatible agent (Cursor, Windsurf, custom), plus HTTP API and CLI as equal integration paths.
+- **Screenshots refreshed** — distinct content per shot, proper theme application via API prefs, capture script uses `webshot` consistently.
+
 ## [0.3.0] - 2026-02-25
 
 ### Added
