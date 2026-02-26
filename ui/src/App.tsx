@@ -75,7 +75,7 @@ export default function App() {
     onNoteAdded,
     onNotesCleared: () => reload(),
     onNotesUpdated: () => reload(),
-    onSessionChanged: () => reload(),
+    onSessionChanged: () => { reload(); reloadTodos(); },
     onTodosUpdated: () => reloadTodos(),
   });
 
