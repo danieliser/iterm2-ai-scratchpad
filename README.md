@@ -4,9 +4,7 @@ A real-time sidebar for iTerm2 where AI agents post notes, status updates, and r
 
 Works with any MCP-compatible agent (Claude Code, Cursor, Windsurf, custom agents). Any tool that can POST JSON or run a CLI command can use it too.
 
-![AI Scratchpad — Cockpit Dark](screenshots/cockpit-dark.png)
-
-> **[Watch the demo →](https://youtube.com/PLACEHOLDER)**
+![AI Scratchpad Demo](screenshots/demo.gif)
 
 ## Install
 
