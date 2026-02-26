@@ -414,7 +414,9 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
                 if pk:
                     tab_project_keys.add(pk)
 
-        project_sessions: set[str] | None = None
+        # None = no registry (hooks not installed) → show all (backward compat)
+        # empty set = registry exists but no match for this tab → show nothing
+        project_sessions: set[str] | None = None if not registry else set()
         if tab_project_keys:
             from .storage import CLAUDE_PROJECTS_DIR
             project_sessions = set()
