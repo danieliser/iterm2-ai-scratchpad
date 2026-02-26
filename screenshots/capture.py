@@ -31,9 +31,10 @@ def shot(name, width, height, style, scheme, selector=None, viewport=False):
     print(f"  ✓ {name}")
 
 if __name__ == "__main__":
-    shot("cockpit-dark.png",  800, 900, "cockpit", "dark")
-    shot("widgets.png",       380, 800, "cockpit", "dark")
-    shot("todo-board.png",    380, 400, "cockpit", "dark", viewport=True)
-    shot("refined-dark.png",  380, 800, "refined", "dark")
-    shot("cockpit-light.png", 380, 800, "cockpit", "light")
+    shot("cockpit-dark.png",        800, 900, "cockpit", "dark")
+    shot("cockpit-dark-narrow.png", 380, 800, "cockpit", "dark")
+    shot("widgets.png",             380, 800, "cockpit", "dark")
+    shot("todo-board.png",          380, 600, "cockpit", "light", viewport=True)
+    shot("refined-dark.png",        380, 800, "refined", "dark")
+    shot("cockpit-light.png",       380, 800, "cockpit", "light")
     print("\nDone! Screenshots saved to screenshots/")

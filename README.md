@@ -70,7 +70,7 @@ Two independent controls in the title bar:
 
 | Cockpit Dark | Refined Dark | Cockpit Light |
 |---|---|---|
-| ![](screenshots/cockpit-dark.png) | ![](screenshots/refined-dark.png) | ![](screenshots/cockpit-light.png) |
+| ![](screenshots/cockpit-dark-narrow.png) | ![](screenshots/refined-dark.png) | ![](screenshots/cockpit-light.png) |
 
 - **Scheme** (◎ auto / ☾ dark / ☀ light) — follows system preference by default
 - **Style** (◐ Cockpit / ◑ Refined) — different fonts, border radius, visual effects
