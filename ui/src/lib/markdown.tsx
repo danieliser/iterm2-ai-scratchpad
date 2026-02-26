@@ -229,13 +229,24 @@ function renderMarkdownToHtml(s: string): string {
   s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   // Italic
   s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
-  // H3
+  // Headings (### before ## before # to avoid greedy match)
   s = s.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  s = s.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  s = s.replace(/^# (.+)$/gm, "<h1>$1</h1>");
   // HR
   s = s.replace(/^---$/gm, "<hr>");
+  // Checklists (must come before unordered lists since they start with "- ")
+  s = s.replace(
+    /^- \[(x| )\] (.+)$/gm,
+    (_, checked, text) =>
+      `<li class="checklist-item"><input type="checkbox" disabled${checked === "x" ? " checked" : ""}> ${text}</li>`,
+  );
   // Unordered lists
   s = s.replace(/^- (.+)$/gm, "<li>$1</li>");
-  s = s.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`);
+  s = s.replace(/(<li[^>]*>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`);
+  // Ordered lists (use data attribute to distinguish from ul items)
+  s = s.replace(/^\d+\. (.+)$/gm, '<li data-ol="1">$1</li>');
+  s = s.replace(/(<li data-ol="1">.*?<\/li>\n?)+/g, (m) => `<ol>${m.replace(/ data-ol="1"/g, "")}</ol>`);
   // Markdown tables
   s = s.replace(/(^\|.+\|$\n?)+/gm, (block) => {
     const rows = block.trim().split("\n").filter((r) => r.trim());
@@ -265,10 +276,132 @@ function renderMarkdownToHtml(s: string): string {
   return s;
 }
 
+/** Rejoin table rows that got split across multiple lines */
+function normalizeTableRows(s: string): string {
+  const lines = s.split("\n");
+  const result: string[] = [];
+  let pending = "";
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (pending) {
+      pending += " " + trimmed;
+      if (trimmed.endsWith("|")) {
+        result.push(pending);
+        pending = "";
+      }
+    } else if (
+      trimmed.startsWith("|") &&
+      !trimmed.endsWith("|") &&
+      trimmed.length > 1
+    ) {
+      pending = trimmed;
+    } else {
+      result.push(line);
+    }
+  }
+  if (pending) result.push(pending);
+  return result.join("\n");
+}
+
+/**
+ * Build a React <table> from a markdown table block. Cell content may contain
+ * widget placeholders which get resolved to actual React nodes.
+ */
+function buildReactTable(
+  block: string,
+  widgets: Map<string, ReactNode>,
+  keyBase: number,
+): ReactNode | null {
+  const rows = block.trim().split("\n").filter((r) => r.trim());
+  if (rows.length < 2) return null;
+  const sep = rows[1];
+  if (!/^\|[\s\-:|]+\|$/.test(sep)) return null;
+
+  const parseRow = (r: string) =>
+    r.split("|").slice(1, -1).map((c) => c.trim());
+
+  const headers = parseRow(rows[0]);
+
+  /** Render cell text, resolving any widget placeholders to React nodes */
+  function renderCell(text: string): ReactNode {
+    const phRegex = /\x00W\d+\x00/g;
+    if (!phRegex.test(text)) {
+      // Plain text cell — render inline markdown
+      return (
+        <span
+          dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(renderInlineMarkdown(text)),
+          }}
+        />
+      );
+    }
+    // Cell contains widgets — interleave text and widget nodes
+    phRegex.lastIndex = 0;
+    const parts: ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = phRegex.exec(text)) !== null) {
+      const before = text.slice(last, m.index).trim();
+      if (before) {
+        parts.push(
+          <span
+            key={`t${i++}`}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(renderInlineMarkdown(before)),
+            }}
+          />,
+        );
+      }
+      const widget = widgets.get(m[0]);
+      if (widget) {
+        parts.push(<span key={`w${i++}`}>{widget}</span>);
+      }
+      last = m.index + m[0].length;
+    }
+    const after = text.slice(last).trim();
+    if (after) {
+      parts.push(
+        <span
+          key={`t${i++}`}
+          dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(renderInlineMarkdown(after)),
+          }}
+        />,
+      );
+    }
+    return <>{parts}</>;
+  }
+
+  return (
+    <table key={keyBase} className="widget-table">
+      <thead>
+        <tr>
+          {headers.map((h, i) => (
+            <th key={i}>{renderCell(h)}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(2).map((row, ri) => {
+          const cells = parseRow(row);
+          return (
+            <tr key={ri}>
+              {cells.map((c, ci) => (
+                <td key={ci}>{renderCell(c)}</td>
+              ))}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 /**
  * Parse a note's raw text into an array of React elements.
  * Widgets become React components, markdown becomes HTML spans.
- * Uses position-based keys to avoid stale widget state issues.
+ * Tables containing widgets are rendered as React elements directly.
  */
 export function parseNoteContent(raw: string): ReactNode[] {
   const { text, widgets } = extractWidgets(raw);
@@ -282,15 +415,41 @@ export function parseNoteContent(raw: string): ReactNode[] {
     ];
   }
 
-  // Split text by widget placeholders and interleave
+  // Normalize split table rows, then extract table blocks as React elements
+  const normalized = normalizeTableRows(text);
+
+  // Find markdown table blocks and replace with table placeholders
+  const tableWidgets = new Map<string, ReactNode>();
+  let tableSeq = 0;
+  const withTables = normalized.replace(
+    /(^\|.+\|$\n?)+/gm,
+    (block) => {
+      const table = buildReactTable(block, widgets, tableSeq);
+      if (!table) return block; // not a valid table, leave as-is
+      const ph = `\x02T${++tableSeq}\x02`;
+      tableWidgets.set(ph, table);
+      return ph;
+    },
+  );
+
+  // Collect all widget placeholders that were consumed by tables
+  // so we skip them during the main interleave
+  const consumedByTables = new Set<string>();
+  for (const block of normalized.matchAll(/(^\|.+\|$\n?)+/gm)) {
+    for (const m of block[0].matchAll(/\x00W\d+\x00/g)) {
+      consumedByTables.add(m[0]);
+    }
+  }
+
+  // Split by widget placeholders AND table placeholders, interleave
   const parts: ReactNode[] = [];
-  const regex = /\x00W\d+\x00/g;
+  const regex = /\x00W\d+\x00|\x02T\d+\x02/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let partIndex = 0;
 
-  while ((match = regex.exec(text)) !== null) {
-    const before = text.slice(lastIndex, match.index);
+  while ((match = regex.exec(withTables)) !== null) {
+    const before = withTables.slice(lastIndex, match.index);
     if (before) {
       parts.push(
         <span
@@ -299,14 +458,16 @@ export function parseNoteContent(raw: string): ReactNode[] {
         />,
       );
     }
-    const widget = widgets.get(match[0]);
-    if (widget) {
-      parts.push(<span key={partIndex++}>{widget}</span>);
+    const ph = match[0];
+    if (tableWidgets.has(ph)) {
+      parts.push(<span key={partIndex++}>{tableWidgets.get(ph)}</span>);
+    } else if (widgets.has(ph) && !consumedByTables.has(ph)) {
+      parts.push(<span key={partIndex++}>{widgets.get(ph)}</span>);
     }
     lastIndex = match.index + match[0].length;
   }
 
-  const trailing = text.slice(lastIndex);
+  const trailing = withTables.slice(lastIndex);
   if (trailing) {
     parts.push(
       <span
