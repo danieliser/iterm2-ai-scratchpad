@@ -6,8 +6,6 @@ Works with any MCP-compatible agent (Claude Code, Cursor, Windsurf, custom agent
 
 ![AI Scratchpad — Cockpit Dark](screenshots/cockpit-dark.png)
 
-> **[Watch the demo →](https://youtube.com/PLACEHOLDER)**
-
 ## Install
 
 ```bash
@@ -41,7 +39,7 @@ claude mcp add ai-scratchpad -s user \
   "$(pwd)/src/mcp_server.py"
 ```
 
-**Other MCP clients** — point your agent's MCP config at the server:
+**Other MCP clients** (Cursor, Windsurf, etc.) — point your agent's MCP config at the server:
 
 ```json
 {
@@ -50,6 +48,14 @@ claude mcp add ai-scratchpad -s user \
     "args": ["run", "--with", "mcp[cli]", "python", "/path/to/src/mcp_server.py"]
   }
 }
+```
+
+**OpenClaw** — native MCP support is [in progress](https://github.com/openclaw/openclaw/issues/4834). Until it lands, use the HTTP API via OpenClaw's `exec` tool or add an [OpenClaw skill](#openclaw-skill):
+
+```bash
+curl -X POST http://localhost:9999/api/notes \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Hello from OpenClaw", "source": "openclaw"}'
 ```
 
 **No MCP? No problem** — use the HTTP API or CLI directly (see below).
@@ -71,6 +77,10 @@ Once running, any agent or script can post to the sidebar:
 - **Click-to-copy** snippets, **executable run commands**
 - **Timers**, **countdowns**, **checklists**
 - **Todo board** — aggregates task lists with live progress bars
+
+### See it in action
+
+![AI Scratchpad Demo](screenshots/demo.gif)
 
 Notes are scoped per terminal tab — switch tabs to see that tab's agent output. Use the **All** / **Tab** / **Panel** toggle to view everything, the current tab's panes, or just the focused session.
 
@@ -104,6 +114,16 @@ curl -X POST http://localhost:9999/api/notes \
   -H 'Content-Type: application/json' \
   -d '{"text": "Hello from curl", "source": "my-script"}'
 ```
+
+## OpenClaw skill
+
+Copy the included skill to your OpenClaw skills directory:
+
+```bash
+cp -r skills/openclaw ~/.openclaw/skills/ai-scratchpad
+```
+
+This teaches OpenClaw how to post notes, use widget syntax, and when to use the scratchpad. See [`skills/openclaw/SKILL.md`](skills/openclaw/SKILL.md) for the full reference.
 
 ## Troubleshooting
 
