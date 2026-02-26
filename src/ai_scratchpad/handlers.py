@@ -391,21 +391,24 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
     def _scan_todos():
         sessions = []
         teams = []
-        max_age = 2 * 3600
+        max_age = 24 * 3600
         now = _time.time()
 
         if CLAUDE_TODOS_DIR.exists():
-            files = sorted(
-                (f for f in CLAUDE_TODOS_DIR.iterdir()
-                 if f.suffix == ".json" and f.stat().st_size > 10),
-                key=lambda f: f.stat().st_mtime,
-                reverse=True,
-            )
-            for f in files[:20]:
+            # Single stat per file, pre-filter by age and size
+            candidates = []
+            for f in CLAUDE_TODOS_DIR.iterdir():
+                if f.suffix != ".json":
+                    continue
                 try:
-                    mtime = f.stat().st_mtime
-                    if now - mtime > max_age:
-                        break
+                    st = f.stat()
+                    if st.st_size > 10 and now - st.st_mtime <= max_age:
+                        candidates.append((f, st.st_mtime))
+                except OSError:
+                    continue
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            for f, mtime in candidates[:20]:
+                try:
                     data = json.loads(f.read_text())
                     if not data:
                         continue
