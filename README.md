@@ -39,7 +39,7 @@ claude mcp add ai-scratchpad -s user \
   "$(pwd)/src/mcp_server.py"
 ```
 
-**Other MCP clients** — point your agent's MCP config at the server:
+**Other MCP clients** (Cursor, Windsurf, etc.) — point your agent's MCP config at the server:
 
 ```json
 {
@@ -48,6 +48,14 @@ claude mcp add ai-scratchpad -s user \
     "args": ["run", "--with", "mcp[cli]", "python", "/path/to/src/mcp_server.py"]
   }
 }
+```
+
+**OpenClaw** — native MCP support is [in progress](https://github.com/openclaw/openclaw/issues/4834). Until it lands, use the HTTP API via OpenClaw's `exec` tool or add an [OpenClaw skill](#openclaw-skill):
+
+```bash
+curl -X POST http://localhost:9999/api/notes \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Hello from OpenClaw", "source": "openclaw"}'
 ```
 
 **No MCP? No problem** — use the HTTP API or CLI directly (see below).
@@ -105,6 +113,56 @@ Any tool can post notes:
 curl -X POST http://localhost:9999/api/notes \
   -H 'Content-Type: application/json' \
   -d '{"text": "Hello from curl", "source": "my-script"}'
+```
+
+## OpenClaw skill
+
+Drop this file at `~/.openclaw/skills/ai-scratchpad/SKILL.md` to teach OpenClaw how to use the scratchpad:
+
+```markdown
+---
+name: ai-scratchpad
+description: Post notes and rich widgets to the iTerm2 AI Scratchpad sidebar
+version: 0.1.0
+metadata:
+  openclaw:
+    requirements:
+      binaries: [curl]
+---
+
+# AI Scratchpad
+
+Post notes to the iTerm2 sidebar at `http://localhost:9999`.
+
+## Posting a note
+
+Use the exec tool to run:
+
+\`\`\`bash
+curl -s -X POST http://localhost:9999/api/notes \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Your message here", "source": "openclaw"}'
+\`\`\`
+
+## Parameters
+
+- **text** (required) — markdown content with optional widget syntax
+- **source** — label for filtering: `openclaw`, `ci`, `monitor`, `debug`
+
+## Widget syntax
+
+Inline: `[status:success:Build Passed]`, `[progress:75:Deploying...]`, `[metric:42ms:Latency:down]`
+
+Block: `[kv]Key=Value[/kv]`, `[todo]Task 1\n[x]Done task[/todo]`, `[diff]-old\n+new[/diff]`
+
+## When to use
+
+- Status updates on multi-step tasks
+- Build/deploy results with badges and progress bars
+- Data summaries with key-value pairs or charts
+- Task checklists for complex work
+
+Don't post every minor action — it's a dashboard, not a log stream.
 ```
 
 ## Troubleshooting
