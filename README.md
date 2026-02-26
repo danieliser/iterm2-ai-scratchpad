@@ -4,7 +4,7 @@ A real-time sidebar for iTerm2 where AI agents post notes, status updates, and r
 
 Works with any MCP-compatible agent (Claude Code, Cursor, Windsurf, custom agents). Any tool that can POST JSON or run a CLI command can use it too.
 
-![AI Scratchpad Demo](screenshots/demo.gif)
+![AI Scratchpad — Cockpit Dark](screenshots/cockpit-dark.png)
 
 ## Install
 
@@ -69,6 +69,10 @@ Once running, any agent or script can post to the sidebar:
 - **Click-to-copy** snippets, **executable run commands**
 - **Timers**, **countdowns**, **checklists**
 - **Todo board** — aggregates task lists with live progress bars
+
+### See it in action
+
+![AI Scratchpad Demo](screenshots/demo.gif)
 
 Notes are scoped per terminal tab — switch tabs to see that tab's agent output. Use the **All** / **Tab** / **Panel** toggle to view everything, the current tab's panes, or just the focused session.
 
