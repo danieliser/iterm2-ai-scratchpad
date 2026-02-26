@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.1] - 2026-02-25
+
+### Fixed
+
+- **Link widget clicks now work in toolbelt** — routes through server-side `open` command instead of relying on WKWebView navigation, which was blocked in the sandboxed WebView.
+
+### Added
+
+- **Editor deeplinks** — `[link:Open in Cursor:cursor://file/path/to/file]` opens files directly in Cursor (or VS Code, etc). Any URL scheme supported via macOS `open`.
+- Documented deeplink syntax in MCP tool docstring and project CLAUDE.md.
+
 ## [0.2.0] - 2026-02-25
 
 ### Added
