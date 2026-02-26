@@ -1,40 +1,37 @@
-"""Capture screenshots of the scratchpad at localhost:9999 using Playwright."""
+"""Capture screenshots of the scratchpad at localhost:9999.
+
+Sets theme via the API so React applies it correctly on load,
+then uses webshot (Playwright) to capture.
+"""
 import subprocess
-import sys
+import json
+import urllib.request
 
-def shot(name, width, height, style, scheme, full_page=False, scroll_to_top=True):
-    js_setup = f"""
-    document.documentElement.setAttribute('data-style', '{style}');
-    document.documentElement.setAttribute('data-scheme', '{scheme}');
-    """
-    if scroll_to_top:
-        js_setup += """
-        const container = document.querySelector('.notes-container');
-        if (container) container.scrollTop = 0;
-        """
+API = "http://localhost:9999/api/prefs"
 
-    cmd = [
-        sys.executable, "-m", "shot_scraper",
-        "http://localhost:9999",
-        "--width", str(width),
-        "--height", str(height),
-        "-o", f"screenshots/{name}",
-        "--javascript", js_setup,
-        "--wait", "5000",
-    ]
-    if not full_page:
-        cmd.append("--viewport")
+def set_theme(style, scheme):
+    """Set style/scheme via the prefs API so React loads with correct theme."""
+    data = json.dumps({"style": style, "scheme": scheme}).encode()
+    req = urllib.request.Request(API, data=data, method="PUT",
+                                headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req)
 
+def shot(name, width, height, style, scheme, selector=None):
+    set_theme(style, scheme)
+    cmd = ["webshot", "http://localhost:9999",
+           "--width", str(width), "--height", str(height),
+           "--wait", "3000",
+           "-o", f"screenshots/{name}", "-q"]
+    if selector:
+        cmd += ["-s", selector]
     print(f"  Capturing {name} ({width}x{height}, {style}/{scheme})...")
     subprocess.run(cmd, check=True)
     print(f"  ✓ {name}")
 
 if __name__ == "__main__":
-    # Hero — wide to show widgets nicely
-    shot("cockpit-dark.png",  800, 900, "cockpit", "dark", full_page=True)
-    # Narrow sidebar shots
-    shot("widgets.png",       380, 800, "cockpit", "dark", full_page=True)
+    shot("cockpit-dark.png",  800, 900, "cockpit", "dark")
+    shot("widgets.png",       380, 800, "cockpit", "dark")
     shot("todo-board.png",    380, 400, "cockpit", "dark")
-    shot("refined-dark.png",  380, 800, "refined", "dark", full_page=True)
-    shot("cockpit-light.png", 380, 800, "cockpit", "light", full_page=True)
+    shot("refined-dark.png",  380, 800, "refined", "dark")
+    shot("cockpit-light.png", 380, 800, "cockpit", "light")
     print("\nDone! Screenshots saved to screenshots/")
