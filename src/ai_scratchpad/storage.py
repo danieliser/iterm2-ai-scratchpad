@@ -20,6 +20,7 @@ CLAUDE_TASKS_DIR = Path.home() / ".claude" / "tasks"
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SUMMARY_CACHE_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "session-summaries.json"
 PREFS_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "prefs.json"
+SESSIONS_REGISTRY_PATH = Path.home() / ".config" / "iterm2-scratchpad" / "active-sessions.json"
 DEFAULT_SESSION = "default"
 
 # Active iTerm2 session UUID — updated by session monitor when running inside iTerm2
@@ -82,6 +83,89 @@ def get_iterm2_connection():
 def set_iterm2_connection(conn) -> None:
     global _iterm2_connection
     _iterm2_connection = conn
+
+
+# ---------------------------------------------------------------------------
+# Active Claude session registry
+# ---------------------------------------------------------------------------
+_sessions_registry_lock = threading.Lock()
+
+
+def _load_sessions_registry() -> dict:
+    """Load active sessions from disk."""
+    try:
+        if SESSIONS_REGISTRY_PATH.exists():
+            return json.loads(SESSIONS_REGISTRY_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_sessions_registry(data: dict) -> None:
+    """Atomically save active sessions to disk."""
+    SESSIONS_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", dir=SESSIONS_REGISTRY_PATH.parent,
+        suffix=".tmp", delete=False,
+    )
+    try:
+        json.dump(data, tmp, indent=2)
+        tmp.close()
+        os.replace(tmp.name, SESSIONS_REGISTRY_PATH)
+    except Exception:
+        tmp.close()
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        raise
+
+
+def register_session(session_id: str, data: dict) -> None:
+    """Register an active Claude Code session."""
+    with _sessions_registry_lock:
+        registry = _load_sessions_registry()
+        registry[session_id] = {
+            "session_id": session_id,
+            "cwd": data.get("cwd", ""),
+            "project_key": data.get("project_key", ""),
+            "iterm_session": data.get("iterm_session", ""),
+            "git_branch": data.get("git_branch", ""),
+            "started_at": data.get("started_at", ""),
+        }
+        _save_sessions_registry(registry)
+
+
+def unregister_session(session_id: str) -> None:
+    """Remove a Claude Code session from the registry."""
+    with _sessions_registry_lock:
+        registry = _load_sessions_registry()
+        registry.pop(session_id, None)
+        _save_sessions_registry(registry)
+
+
+def get_active_sessions() -> dict:
+    """Return the active sessions registry."""
+    return _load_sessions_registry()
+
+
+def get_project_session_ids(project_key: str) -> set[str]:
+    """Return Claude session IDs that belong to a given project."""
+    registry = _load_sessions_registry()
+    return {
+        sid for sid, info in registry.items()
+        if info.get("project_key") == project_key
+    }
+
+
+def get_active_project_keys() -> set[str]:
+    """Return project keys from all active sessions."""
+    registry = _load_sessions_registry()
+    return {
+        info.get("project_key")
+        for info in registry.values()
+        if info.get("project_key")
+    }
 
 
 # ---------------------------------------------------------------------------

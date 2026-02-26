@@ -18,6 +18,7 @@ from .storage import (
     get_iterm2_connection, get_current_tab_session_ids,
     load_notes, save_notes, load_all_notes, load_tab_notes, append_note, update_note_in_file,
     load_prefs, save_prefs,
+    register_session, unregister_session, get_active_sessions, get_active_project_keys,
 )
 from . import ITERM2_AVAILABLE, _iterm2
 from .streaming import broadcast, get_sse_clients, get_sse_lock
@@ -387,12 +388,38 @@ async def handle_run(request: web.Request) -> web.Response:
 # Todos / tasks
 # ---------------------------------------------------------------------------
 async def handle_get_todos(_request: web.Request) -> web.Response:
-    """Return active Claude Code todos and team tasks."""
+    """Return active Claude Code todos and team tasks.
+
+    When active sessions are registered (via hooks), filters to only
+    sessions from the same project(s). Falls back to showing all recent
+    todos when no sessions are registered (hooks not installed).
+    """
     def _scan_todos():
         sessions = []
         teams = []
         max_age = 24 * 3600
         now = _time.time()
+
+        # Build project filter from session registry
+        active_projects = get_active_project_keys()
+        project_sessions: set[str] | None = None
+        if active_projects:
+            # Collect all Claude session IDs that have JSONL files in active projects
+            from .storage import CLAUDE_PROJECTS_DIR
+            project_sessions = set()
+            for pk in active_projects:
+                proj_dir = CLAUDE_PROJECTS_DIR / pk
+                if proj_dir.is_dir():
+                    for jsonl in proj_dir.glob("*.jsonl"):
+                        # Filename is {session_id}.jsonl or {session_id}-*.jsonl
+                        sid = jsonl.stem.split("-")[0] if "-" in jsonl.stem else jsonl.stem
+                        # Session IDs are UUIDs — must be at least 32 hex chars
+                        if len(sid) >= 8:
+                            project_sessions.add(sid)
+            # Also include session IDs directly from the registry
+            registry = get_active_sessions()
+            for sid in registry:
+                project_sessions.add(sid)
 
         if CLAUDE_TODOS_DIR.exists():
             # Single stat per file, pre-filter by age and size
@@ -409,6 +436,10 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
             candidates.sort(key=lambda x: x[1], reverse=True)
             for f, mtime in candidates[:20]:
                 try:
+                    sid = f.stem.split("-agent-")[0] if "-agent-" in f.stem else f.stem
+                    # Filter by project if registry is populated
+                    if project_sessions is not None and sid not in project_sessions:
+                        continue
                     data = json.loads(f.read_text())
                     if not data:
                         continue
@@ -419,7 +450,6 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
                     )
                     if not has_active:
                         continue
-                    sid = f.stem.split("-agent-")[0] if "-agent-" in f.stem else f.stem
                     sessions.append({
                         "file": f.name,
                         "session_id": sid,
@@ -441,6 +471,10 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
             )[:5]:
                 if now - team_dir.stat().st_mtime > max_age:
                     break
+                team_id = team_dir.name
+                # Filter by project if registry is populated
+                if project_sessions is not None and team_id not in project_sessions:
+                    continue
                 tasks = []
                 for tf in team_dir.glob("*.json"):
                     try:
@@ -451,7 +485,6 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
                         continue
                 active_tasks = [t for t in tasks if t.get("status") != "completed"]
                 if tasks and active_tasks:
-                    team_id = team_dir.name
                     teams.append({
                         "team": team_id,
                         "summary": get_session_summary(team_id),
@@ -491,6 +524,54 @@ async def handle_put_prefs(request: web.Request) -> web.Response:
     return cors(web.Response(
         content_type="application/json",
         text=json.dumps(prefs),
+    ))
+
+
+# ---------------------------------------------------------------------------
+# Session registry (Claude Code hook integration)
+# ---------------------------------------------------------------------------
+async def handle_register_session(request: web.Request) -> web.Response:
+    """Register an active Claude Code session (called by SessionStart hook)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return cors(web.Response(status=400, text="Invalid JSON"))
+    session_id = body.get("session_id")
+    if not session_id:
+        return cors(web.Response(status=400, text="session_id required"))
+    await asyncio.to_thread(register_session, session_id, body)
+    await broadcast("todos_updated", {})
+    log.info("Session registered: %s (project=%s)", session_id, body.get("project_key", ""))
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"status": "ok", "session_id": session_id}),
+    ))
+
+
+async def handle_unregister_session(request: web.Request) -> web.Response:
+    """Unregister a Claude Code session (called by SessionEnd hook)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return cors(web.Response(status=400, text="Invalid JSON"))
+    session_id = body.get("session_id")
+    if not session_id:
+        return cors(web.Response(status=400, text="session_id required"))
+    await asyncio.to_thread(unregister_session, session_id)
+    await broadcast("todos_updated", {})
+    log.info("Session unregistered: %s", session_id)
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps({"status": "ok", "session_id": session_id}),
+    ))
+
+
+async def handle_get_sessions(request: web.Request) -> web.Response:
+    """Return active Claude Code sessions."""
+    sessions = await asyncio.to_thread(get_active_sessions)
+    return cors(web.Response(
+        content_type="application/json",
+        text=json.dumps(sessions),
     ))
 
 

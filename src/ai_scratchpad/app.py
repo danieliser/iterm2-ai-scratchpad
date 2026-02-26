@@ -18,6 +18,7 @@ from .handlers import (
     handle_activate_session, handle_get_session_status, handle_health,
     handle_sse, handle_run,
     handle_get_todos, handle_get_prefs, handle_put_prefs, _handle_favicon,
+    handle_register_session, handle_unregister_session, handle_get_sessions,
 )
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,9 @@ def build_app() -> web.Application:
     app.router.add_get("/api/todos", handle_get_todos)
     app.router.add_get("/api/prefs", handle_get_prefs)
     app.router.add_put("/api/prefs", handle_put_prefs)
+    app.router.add_post("/api/sessions/register", handle_register_session)
+    app.router.add_post("/api/sessions/unregister", handle_unregister_session)
+    app.router.add_get("/api/sessions", handle_get_sessions)
     app.router.add_get("/favicon.ico", _handle_favicon)
     return app
 

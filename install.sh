@@ -124,6 +124,43 @@ else
     echo "  claude mcp add ai-scratchpad -s user -- uv run --with 'mcp[cli]' python $MCP_SCRIPT"
 fi
 
+# ── Session hooks (todo board project filtering) ──────────────────────
+
+HOOK_SCRIPT="$REPO_DIR/hooks/session-register.sh"
+
+if command -v claude &>/dev/null && command -v jq &>/dev/null; then
+    SETTINGS="$HOME/.claude/settings.json"
+    if [[ -f "$SETTINGS" ]]; then
+        HOOK_CMD_START="bash \"$HOOK_SCRIPT\" register"
+        HOOK_CMD_END="bash \"$HOOK_SCRIPT\" unregister"
+
+        # Check if already registered
+        if jq -e '.hooks.SessionStart[]?.hooks[]? | select(.command == "'"$HOOK_CMD_START"'")' "$SETTINGS" >/dev/null 2>&1; then
+            ok "Session hooks already registered"
+        else
+            # Add SessionStart hook
+            TMPFILE="$(mktemp)"
+            jq --arg cmd "$HOOK_CMD_START" '
+                .hooks.SessionStart = (.hooks.SessionStart // []) +
+                [{"hooks": [{"type": "command", "command": $cmd}]}]
+            ' "$SETTINGS" > "$TMPFILE" && mv "$TMPFILE" "$SETTINGS"
+
+            # Add SessionEnd hook
+            TMPFILE="$(mktemp)"
+            jq --arg cmd "$HOOK_CMD_END" '
+                .hooks.SessionEnd = (.hooks.SessionEnd // []) +
+                [{"hooks": [{"type": "command", "command": $cmd}]}]
+            ' "$SETTINGS" > "$TMPFILE" && mv "$TMPFILE" "$SETTINGS"
+
+            ok "Session hooks registered (todo board project filtering)"
+        fi
+    fi
+else
+    info "To enable todo board project filtering, add these hooks to ~/.claude/settings.json:"
+    echo "    SessionStart: bash $HOOK_SCRIPT register"
+    echo "    SessionEnd:   bash $HOOK_SCRIPT unregister"
+fi
+
 # ── Optional: CLI tool ──────────────────────────────────────────────
 
 CLI_SOURCE="$REPO_DIR/bin/scratchpad"
