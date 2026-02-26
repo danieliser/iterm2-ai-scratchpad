@@ -13,12 +13,12 @@ from pathlib import Path
 from aiohttp import web
 
 from .storage import (
-    NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, DEFAULT_SESSION,
+    NOTES_DIR, CLAUDE_TODOS_DIR, CLAUDE_TASKS_DIR, CLAUDE_PROJECTS_DIR, DEFAULT_SESSION,
     get_current_session_id, get_start_time, get_session_summary,
-    get_iterm2_connection, get_current_tab_session_ids,
+    get_iterm2_connection, get_current_tab_session_ids, get_current_tab_project_key,
     load_notes, save_notes, load_all_notes, load_tab_notes, append_note, update_note_in_file,
     load_prefs, save_prefs,
-    register_session, unregister_session, get_active_sessions, get_active_project_keys,
+    register_session, unregister_session, get_active_sessions,
 )
 from . import ITERM2_AVAILABLE, _iterm2
 from .streaming import broadcast, get_sse_clients, get_sse_lock
@@ -387,50 +387,31 @@ async def handle_run(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 # Todos / tasks
 # ---------------------------------------------------------------------------
-async def handle_get_todos(_request: web.Request) -> web.Response:
+async def handle_get_todos(request: web.Request) -> web.Response:
     """Return active Claude Code todos and team tasks.
 
-    When active sessions are registered (via hooks), filters to only
-    sessions from the same project(s). Falls back to showing all recent
-    todos when no sessions are registered (hooks not installed).
+    ?scope=all bypasses project filtering and returns all recent todos.
+    Default scopes to the current tab's project via cwd-derived project key.
     """
+    scope = request.query.get("scope", "tab")
+
     def _scan_todos():
         sessions = []
         teams = []
         max_age = 24 * 3600
         now = _time.time()
 
-        # Build project filter: find which project the current iTerm2 tab belongs to
-        # by matching tab session IDs against the registry's iterm_session field
-        tab_sids = get_current_tab_session_ids()
-        registry = get_active_sessions()
-        tab_project_keys: set[str] = set()
-        for _sid, info in registry.items():
-            iterm_sid = info.get("iterm_session", "")
-            # iterm_session can be "w0t2p0:UUID" — extract the UUID part
-            iterm_uuid = iterm_sid.split(":")[-1] if ":" in iterm_sid else iterm_sid
-            if iterm_uuid and iterm_uuid in tab_sids:
-                pk = info.get("project_key", "")
-                if pk:
-                    tab_project_keys.add(pk)
-
-        # None = no registry (hooks not installed) → show all (backward compat)
-        # empty set = registry exists but no match for this tab → show nothing
-        project_sessions: set[str] | None = None if not registry else set()
-        if tab_project_keys:
-            from .storage import CLAUDE_PROJECTS_DIR
-            project_sessions = set()
-            for pk in tab_project_keys:
-                proj_dir = CLAUDE_PROJECTS_DIR / pk
+        # Build project filter from the current tab's cwd-derived project key.
+        # scope=all bypasses filtering entirely.
+        project_sessions: set[str] | None = None
+        if scope != "all":
+            tab_pk = get_current_tab_project_key()
+            if tab_pk:
+                proj_dir = CLAUDE_PROJECTS_DIR / tab_pk
+                project_sessions = set()
                 if proj_dir.is_dir():
                     for jsonl in proj_dir.glob("*.jsonl"):
-                        sid = jsonl.stem.split("-")[0] if "-" in jsonl.stem else jsonl.stem
-                        if len(sid) >= 8:
-                            project_sessions.add(sid)
-            # Also include session IDs directly from the registry for these projects
-            for sid, info in registry.items():
-                if info.get("project_key", "") in tab_project_keys:
-                    project_sessions.add(sid)
+                        project_sessions.add(jsonl.stem)
 
         if CLAUDE_TODOS_DIR.exists():
             # Single stat per file, pre-filter by age and size

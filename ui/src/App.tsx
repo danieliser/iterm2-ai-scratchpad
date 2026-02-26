@@ -37,7 +37,7 @@ export default function App() {
   } = useNotes();
 
   const { toasts, showToast } = useToast();
-  const { sessions, teams, reload: reloadTodos } = useTaskWatcher();
+  const { sessions, teams, reload: reloadTodos } = useTaskWatcher(scope);
   const { style, scheme, cycleStyle, cycleScheme } = useTheme();
   const sessionStatus = useSessionStatus(scope);
 

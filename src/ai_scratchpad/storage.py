@@ -29,6 +29,9 @@ _current_session_id: str = DEFAULT_SESSION
 # Active iTerm2 tab's session IDs — all panes/splits in the current tab
 _current_tab_session_ids: list[str] = []
 
+# Current tab's project key — derived from active pane cwd on tab switch
+_current_tab_project_key: str = ""
+
 # iTerm2 connection reference — set by session monitor for tab activation
 _iterm2_connection = None
 
@@ -62,6 +65,20 @@ def get_current_tab_session_ids() -> list[str]:
 def set_current_tab_session_ids(ids: list[str]) -> None:
     global _current_tab_session_ids
     _current_tab_session_ids = ids
+
+
+def get_current_tab_project_key() -> str:
+    return _current_tab_project_key
+
+
+def set_current_tab_project_key(key: str) -> None:
+    global _current_tab_project_key
+    _current_tab_project_key = key
+
+
+def cwd_to_project_key(cwd: str) -> str:
+    """Convert a cwd path to Claude's project key slug (replace / with -)."""
+    return cwd.replace("/", "-") if cwd else ""
 
 
 def load_tab_notes(session_ids: list[str], max_notes: int = 200) -> list:

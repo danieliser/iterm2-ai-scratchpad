@@ -9,6 +9,7 @@ from . import ITERM2_AVAILABLE, _iterm2, LOG_PATH
 from .storage import (
     DEFAULT_SESSION, get_current_session_id, set_current_session_id,
     get_current_tab_session_ids, set_current_tab_session_ids, set_iterm2_connection,
+    set_current_tab_project_key, cwd_to_project_key,
 )
 from . import WATCHDOG_AVAILABLE
 from .streaming import broadcast, start_watchdog, start_todo_watchdog, start_poll_fallback, set_event_loop
@@ -86,8 +87,25 @@ async def _session_monitor(connection) -> None:
             set_current_tab_session_ids([])
             return DEFAULT_SESSION
 
+    async def _update_tab_project_key():
+        """Query cwd from the active iTerm2 session and derive project key."""
+        try:
+            window = app.current_window
+            if window and window.current_tab:
+                session = window.current_tab.current_session
+                if session:
+                    cwd = await session.async_get_variable("path") or ""
+                    pk = cwd_to_project_key(cwd)
+                    set_current_tab_project_key(pk)
+                    log.info("Tab project key: %s (cwd=%s)", pk, cwd)
+                    return
+        except Exception as exc:
+            log.warning("Failed to get tab cwd: %s", exc)
+        set_current_tab_project_key("")
+
     try:
         set_current_session_id(_pick_active_session())
+        await _update_tab_project_key()
         log.info("Initial session_id=%s", get_current_session_id())
     except Exception as exc:
         log.error("Failed to set initial session: %s", exc)
@@ -102,6 +120,7 @@ async def _session_monitor(connection) -> None:
                     if new_id != get_current_session_id():
                         log.info("Session changed: %s -> %s", get_current_session_id(), new_id)
                         set_current_session_id(new_id)
+                        await _update_tab_project_key()
                         await broadcast("session_changed", {
                             "session_id": new_id,
                             "tab_session_ids": get_current_tab_session_ids(),
