@@ -117,53 +117,13 @@ curl -X POST http://localhost:9999/api/notes \
 
 ## OpenClaw skill
 
-Drop this file at `~/.openclaw/skills/ai-scratchpad/SKILL.md` to teach OpenClaw how to use the scratchpad:
+Copy the included skill to your OpenClaw skills directory:
 
-```markdown
----
-name: ai-scratchpad
-description: Post notes and rich widgets to the iTerm2 AI Scratchpad sidebar
-version: 0.1.0
-metadata:
-  openclaw:
-    requirements:
-      binaries: [curl]
----
-
-# AI Scratchpad
-
-Post notes to the iTerm2 sidebar at `http://localhost:9999`.
-
-## Posting a note
-
-Use the exec tool to run:
-
-\`\`\`bash
-curl -s -X POST http://localhost:9999/api/notes \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "Your message here", "source": "openclaw"}'
-\`\`\`
-
-## Parameters
-
-- **text** (required) — markdown content with optional widget syntax
-- **source** — label for filtering: `openclaw`, `ci`, `monitor`, `debug`
-
-## Widget syntax
-
-Inline: `[status:success:Build Passed]`, `[progress:75:Deploying...]`, `[metric:42ms:Latency:down]`
-
-Block: `[kv]Key=Value[/kv]`, `[todo]Task 1\n[x]Done task[/todo]`, `[diff]-old\n+new[/diff]`
-
-## When to use
-
-- Status updates on multi-step tasks
-- Build/deploy results with badges and progress bars
-- Data summaries with key-value pairs or charts
-- Task checklists for complex work
-
-Don't post every minor action — it's a dashboard, not a log stream.
+```bash
+cp -r skills/openclaw ~/.openclaw/skills/ai-scratchpad
 ```
+
+This teaches OpenClaw how to post notes, use widget syntax, and when to use the scratchpad. See [`skills/openclaw/SKILL.md`](skills/openclaw/SKILL.md) for the full reference.
 
 ## Troubleshooting
 
