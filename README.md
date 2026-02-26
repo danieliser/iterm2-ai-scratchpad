@@ -1,8 +1,8 @@
 # AI Scratchpad for iTerm2
 
-A real-time sidebar for iTerm2 where your AI agents post notes, status updates, and rich widgets — without interrupting your terminal.
+A real-time sidebar for iTerm2 where AI agents post notes, status updates, and rich widgets — without interrupting your terminal.
 
-Works with Claude Code out of the box via MCP. Also supports any tool that can make HTTP requests.
+Works with any MCP-compatible agent (Claude Code, Cursor, Windsurf, custom agents). Any tool that can POST JSON or run a CLI command can use it too.
 
 ![AI Scratchpad — Cockpit Dark](screenshots/cockpit-dark.png)
 
@@ -30,11 +30,10 @@ Installs to `~/.local/share/ai-scratchpad`. Run it again to update.
 - macOS with [iTerm2](https://iterm2.com) 3.4+
 - iTerm2 Python API enabled (Settings → General → Magic → Enable Python API)
 - [uv](https://docs.astral.sh/uv/) for the MCP server (`brew install uv`)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for agent integration
 
-### Manual MCP setup
+### Connecting your agent
 
-If you installed Claude Code after running the installer, register the MCP server:
+**Claude Code** — the installer registers the MCP server automatically. If you need to do it manually:
 
 ```bash
 claude mcp add ai-scratchpad -s user \
@@ -42,9 +41,22 @@ claude mcp add ai-scratchpad -s user \
   "$(pwd)/src/mcp_server.py"
 ```
 
+**Other MCP clients** — point your agent's MCP config at the server:
+
+```json
+{
+  "ai-scratchpad": {
+    "command": "uv",
+    "args": ["run", "--with", "mcp[cli]", "python", "/path/to/src/mcp_server.py"]
+  }
+}
+```
+
+**No MCP? No problem** — use the HTTP API or CLI directly (see below).
+
 ## What it does
 
-Once running, any Claude Code session can post to the sidebar:
+Once running, any agent or script can post to the sidebar:
 
 | | |
 |---|---|
@@ -58,7 +70,7 @@ Once running, any Claude Code session can post to the sidebar:
 - **Key-value tables**, **code blocks**
 - **Click-to-copy** snippets, **executable run commands**
 - **Timers**, **countdowns**, **checklists**
-- **Todo board** — aggregates Claude Code task lists with live progress bars
+- **Todo board** — aggregates task lists with live progress bars
 
 Notes are scoped per terminal tab — switch tabs to see that tab's agent output. Use the **All** / **Tab** / **Panel** toggle to view everything, the current tab's panes, or just the focused session.
 
@@ -99,7 +111,7 @@ curl -X POST http://localhost:9999/api/notes \
 |---------|-----|
 | Server not running | `curl http://localhost:9999/health` — if no response, restart iTerm2 or run `python3 src/launch.py` manually |
 | Panel not in Toolbelt | View → Show Toolbelt, right-click → enable "AI Scratchpad" |
-| MCP tools missing | `claude mcp list` — if not listed, re-run `claude mcp add` (see Manual MCP setup above) |
+| MCP tools missing | `claude mcp list` — if not listed, re-run `claude mcp add` (see Connecting your agent above) |
 | Logs | `tail -f ~/iterm2_scratchpad.log` |
 
 ## Development
