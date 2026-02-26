@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0] - 2026-02-25
+
+### Added
+
+- **Polling fallback** — when watchdog is unavailable (iTerm2's Python 3.14), notes and todo directories are polled every 2 seconds for live updates.
+- **Note lifecycle** — dismiss notes to collapsed single-line ghosts, restore with one click, toggle dismissed visibility. Persisted to prefs.
+- **Animated transitions** — spring-based layout animations for note cards, filter bar, and todo panels via Motion (framer-motion).
+- **Clickable source labels** — click a note's source to jump to that session's tab in iTerm2.
+- **Tab + Panel scope** — three-way scope toggle (All / Tab / Panel) for viewing notes across all sessions, current tab's panes, or just the active panel.
+- **Theme system** — two independent axes: style (Cockpit / Refined) and scheme (Dark / Light / Auto). Cockpit is amber/mono with CRT scanlines; Refined is Catppuccin with softer radius.
+- **Status bar** — shows cwd, git branch, dirty state, ahead/behind counts, and foreground process for active session.
+- **Multi-panel layout** — when a tab has splits in different directories, shows compact stacked rows with clickable jump-to-panel buttons.
+- **Filter bar toggle** — collapsible filter row with search, source dropdown, and sort. Auto-shows when multiple sources present.
+- **Run widget "Done" feedback** — commands that succeed with no output now show "✓ Done" instead of blank.
+
+### Changed
+
+- Header redesigned — title bar with theme/browser controls, compact toolbar below.
+- Filter bar uses `<select>` dropdowns instead of pill button rows.
+- Note actions (pin, dismiss, copy) are hover-to-show with opacity transitions.
+- Copy button moved inline to note meta row.
+- IBM Plex Sans replaces DM Sans as default UI font in cockpit style.
+
 ## [0.2.1] - 2026-02-25
 
 ### Fixed
