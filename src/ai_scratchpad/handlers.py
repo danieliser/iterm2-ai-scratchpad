@@ -400,26 +400,35 @@ async def handle_get_todos(_request: web.Request) -> web.Response:
         max_age = 24 * 3600
         now = _time.time()
 
-        # Build project filter from session registry
-        active_projects = get_active_project_keys()
+        # Build project filter: find which project the current iTerm2 tab belongs to
+        # by matching tab session IDs against the registry's iterm_session field
+        tab_sids = get_current_tab_session_ids()
+        registry = get_active_sessions()
+        tab_project_keys: set[str] = set()
+        for _sid, info in registry.items():
+            iterm_sid = info.get("iterm_session", "")
+            # iterm_session can be "w0t2p0:UUID" — extract the UUID part
+            iterm_uuid = iterm_sid.split(":")[-1] if ":" in iterm_sid else iterm_sid
+            if iterm_uuid and iterm_uuid in tab_sids:
+                pk = info.get("project_key", "")
+                if pk:
+                    tab_project_keys.add(pk)
+
         project_sessions: set[str] | None = None
-        if active_projects:
-            # Collect all Claude session IDs that have JSONL files in active projects
+        if tab_project_keys:
             from .storage import CLAUDE_PROJECTS_DIR
             project_sessions = set()
-            for pk in active_projects:
+            for pk in tab_project_keys:
                 proj_dir = CLAUDE_PROJECTS_DIR / pk
                 if proj_dir.is_dir():
                     for jsonl in proj_dir.glob("*.jsonl"):
-                        # Filename is {session_id}.jsonl or {session_id}-*.jsonl
                         sid = jsonl.stem.split("-")[0] if "-" in jsonl.stem else jsonl.stem
-                        # Session IDs are UUIDs — must be at least 32 hex chars
                         if len(sid) >= 8:
                             project_sessions.add(sid)
-            # Also include session IDs directly from the registry
-            registry = get_active_sessions()
-            for sid in registry:
-                project_sessions.add(sid)
+            # Also include session IDs directly from the registry for these projects
+            for sid, info in registry.items():
+                if info.get("project_key", "") in tab_project_keys:
+                    project_sessions.add(sid)
 
         if CLAUDE_TODOS_DIR.exists():
             # Single stat per file, pre-filter by age and size
