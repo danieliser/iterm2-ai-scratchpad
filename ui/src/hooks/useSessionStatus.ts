@@ -26,7 +26,7 @@ const POLL_INTERVAL = 5000;
 
 export function useSessionStatus(scope: NoteScope) {
   const [status, setStatus] = useState<SessionStatus | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
     if (scope !== "panel" && scope !== "tab") {

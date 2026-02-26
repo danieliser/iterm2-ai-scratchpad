@@ -10,9 +10,10 @@ let _renderCount = 0;
 
 function loadMermaid() {
   if (!mermaidPromise) {
-    mermaidPromise = import(
+    mermaidPromise = (import(
+      // @ts-expect-error CDN module has no type declarations
       /* @vite-ignore */ "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs"
-    ).then((mod) => {
+    ) as Promise<{ default: { initialize: (c: Record<string, unknown>) => void; run: (c: { nodes: HTMLElement[] }) => Promise<void> } }>).then((mod) => {
       mod.default.initialize({
         theme: "dark",
         themeVariables: {

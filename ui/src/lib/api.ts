@@ -65,6 +65,7 @@ export type Prefs = {
   filter: { source: string; status: string; searchText: string };
   sort: { field: string; order: string };
   pinned: string[];
+  showDismissed?: boolean;
 };
 
 export async function fetchPrefs(): Promise<Prefs> {

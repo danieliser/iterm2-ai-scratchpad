@@ -44,7 +44,7 @@ export function useNotes() {
   }, []);
 
   // Debounced save to server — fire-and-forget
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const persistPrefs = useCallback((partial: Record<string, unknown>) => {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => savePrefs(partial), 300);

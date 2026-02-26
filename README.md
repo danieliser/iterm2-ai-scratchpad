@@ -4,6 +4,10 @@ A real-time sidebar for iTerm2 where your AI agents post notes, status updates, 
 
 Works with Claude Code out of the box via MCP. Also supports any tool that can make HTTP requests.
 
+![AI Scratchpad — Cockpit Dark](screenshots/cockpit-dark.png)
+
+> **[Watch the demo →](https://youtube.com/PLACEHOLDER)**
+
 ## Install
 
 ```bash
@@ -42,21 +46,34 @@ claude mcp add ai-scratchpad -s user \
 
 Once running, any Claude Code session can post to the sidebar:
 
-- Status badges, progress bars, sparkline charts
-- Timers, countdowns, checklists
-- Diff views, file trees, mermaid diagrams
-- Code blocks, key-value tables, log output
-- Click-to-copy snippets, executable commands
+| | |
+|---|---|
+| ![Widgets](screenshots/widgets.png) | ![Todo Board](screenshots/todo-board.png) |
 
-Notes are scoped per terminal tab — switch tabs to see that tab's agent output. Use the **All** / **Active** toggle to view everything or just the focused session.
+- **Status badges** — success, warning, error, info
+- **Progress bars** and **sparkline charts**
+- **Metric cards** with trend indicators
+- **Diff views**, **log blocks** (error/warn/info/debug)
+- **File trees**, **mermaid diagrams**
+- **Key-value tables**, **code blocks**
+- **Click-to-copy** snippets, **executable run commands**
+- **Timers**, **countdowns**, **checklists**
+- **Todo board** — aggregates Claude Code task lists with live progress bars
+
+Notes are scoped per terminal tab — switch tabs to see that tab's agent output. Use the **All** / **Tab** / **Panel** toggle to view everything, the current tab's panes, or just the focused session.
 
 Click any agent's source label to jump to its iTerm2 tab. Open `http://localhost:9999` in a browser for a full-window view.
 
 ### Themes
 
 Two independent controls in the title bar:
+
+| Cockpit Dark | Refined Dark | Cockpit Light |
+|---|---|---|
+| ![](screenshots/cockpit-dark.png) | ![](screenshots/refined-dark.png) | ![](screenshots/cockpit-light.png) |
+
 - **Scheme** (◎ auto / ☾ dark / ☀ light) — follows system preference by default
-- **Style** (◐ Cockpit HUD / ◑ Refined Terminal) — different fonts, border radius, visual effects
+- **Style** (◐ Cockpit / ◑ Refined) — different fonts, border radius, visual effects
 
 ## CLI tool
 

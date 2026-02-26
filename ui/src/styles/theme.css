@@ -861,7 +861,7 @@ body::after {
 .widget-run { background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-md); margin: var(--space-1) 0; overflow: hidden; }
 .widget-run-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); background: var(--bg-surface); border-bottom: 1px solid var(--border); }
 .widget-run-prompt { color: var(--accent-green); font-size: 9px; font-weight: 700; }
-.widget-run-cmd { flex: 1; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow-x: auto; white-space: nowrap; }
+.widget-run-cmd { flex: 1; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .widget-run-btn {
   background: var(--accent-green-dim);
   border: 1px solid rgba(57, 213, 63, 0.4);
