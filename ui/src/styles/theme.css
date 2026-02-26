@@ -79,11 +79,35 @@
 
 /* ============= SCHEME: DARK — per-style color palettes ============= */
 
-/* Cockpit dark (default — matches :root, listed for clarity) */
+/* Cockpit dark — must redeclare all colors at attribute-selector specificity
+   so they override light-scheme values when switching themes */
 [data-style="cockpit"][data-scheme="dark"] {
+  --bg-base: #0d0d0f;
+  --bg-surface: #16161a;
+  --bg-raised: #1e1e24;
+  --bg-hover: #28282e;
+
+  --border: #2d2d33;
+  --border-subtle: #23232a;
+  --border-accent: #3d3d42;
+
+  --text-primary: #e8e8e8;
+  --text-secondary: #a8a8b0;
+  --text-muted: #6d6d75;
+
   --accent-primary: #E8A832;
   --accent-primary-dim: #2a2210;
   --accent-primary-glow: rgba(232, 168, 50, 0.25);
+
+  --accent-green: #39d53f;
+  --accent-green-dim: #1a2d1a;
+  --accent-red: #ff4d4f;
+  --accent-red-dim: #2a1515;
+  --accent-yellow: #ffc857;
+  --accent-yellow-dim: #2a2515;
+  --accent-info: #5dd4ff;
+  --accent-info-dim: #152a35;
+
   --card-shadow: inset 0 0 12px rgba(232, 168, 50, 0.08);
   --card-pinned-shadow: inset 0 0 10px rgba(232, 168, 50, 0.1);
 }
@@ -861,7 +885,7 @@ body::after {
 .widget-run { background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-md); margin: var(--space-1) 0; overflow: hidden; }
 .widget-run-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); background: var(--bg-surface); border-bottom: 1px solid var(--border); }
 .widget-run-prompt { color: var(--accent-green); font-size: 9px; font-weight: 700; }
-.widget-run-cmd { flex: 1; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow-x: auto; white-space: nowrap; }
+.widget-run-cmd { flex: 1; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .widget-run-btn {
   background: var(--accent-green-dim);
   border: 1px solid rgba(57, 213, 63, 0.4);

@@ -31,7 +31,8 @@ export function RunCommand({ command, label }: Props) {
       const data = await execCommand(command, false);
       if (data.status === "completed") {
         setOutputClass(data.exit_code === 0 ? "success" : "error");
-        let text = data.output || "(no output)";
+        const raw = (data.output || "").trim();
+        let text = raw || (data.exit_code === 0 ? "✓ Done" : "(no output)");
         if (data.exit_code !== 0) text += `\nExit code: ${data.exit_code}`;
         setOutput(text);
       } else if (data.status === "timeout") {

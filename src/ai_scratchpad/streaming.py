@@ -148,3 +148,91 @@ def start_todo_watchdog() -> "Observer | None":
     observer.start()
     log.info("Todo watchdog monitoring %s", ", ".join(watched))
     return observer
+
+
+# ---------------------------------------------------------------------------
+# Polling fallback when watchdog is unavailable
+# ---------------------------------------------------------------------------
+
+def _dir_mtime(path: "os.PathLike[str]") -> float:
+    """Get the latest mtime of any .json file in a directory (non-recursive)."""
+    best = 0.0
+    d = str(path)
+    try:
+        for entry in os.scandir(d):
+            if entry.name.endswith(".json") and entry.is_file():
+                try:
+                    best = max(best, entry.stat().st_mtime)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return best
+
+
+def _dir_mtime_recursive(path: "os.PathLike[str]") -> float:
+    """Get the latest mtime of any .json file in a directory tree."""
+    best = 0.0
+    d = str(path)
+    try:
+        for root, _dirs, files in os.walk(d):
+            for f in files:
+                if f.endswith(".json"):
+                    try:
+                        best = max(best, os.stat(os.path.join(root, f)).st_mtime)
+                    except OSError:
+                        pass
+    except OSError:
+        pass
+    return best
+
+
+async def _poll_notes(interval: float = 2.0) -> None:
+    """Poll NOTES_DIR for changes and broadcast notes_updated."""
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    last_mtime = _dir_mtime(NOTES_DIR)
+    log.info("Polling notes dir %s (interval=%.1fs)", NOTES_DIR, interval)
+    while True:
+        await asyncio.sleep(interval)
+        current = _dir_mtime(NOTES_DIR)
+        if current > last_mtime:
+            last_mtime = current
+            await broadcast("notes_updated", {})
+
+
+async def _poll_todos(interval: float = 2.0) -> None:
+    """Poll Claude todo/task dirs for changes and broadcast todos_updated."""
+    dirs = []
+    if CLAUDE_TODOS_DIR.exists():
+        dirs.append(("todos", CLAUDE_TODOS_DIR, False))
+    if CLAUDE_TASKS_DIR.exists():
+        dirs.append(("tasks", CLAUDE_TASKS_DIR, True))
+    if not dirs:
+        log.info("No Claude todo/task directories found — skipping poll")
+        return
+    log.info("Polling todo dirs %s (interval=%.1fs)",
+             ", ".join(str(d) for _, d, _ in dirs), interval)
+    last_mtimes = {
+        name: (_dir_mtime_recursive(d) if recursive else _dir_mtime(d))
+        for name, d, recursive in dirs
+    }
+    while True:
+        await asyncio.sleep(interval)
+        for name, d, recursive in dirs:
+            current = _dir_mtime_recursive(d) if recursive else _dir_mtime(d)
+            if current > last_mtimes[name]:
+                last_mtimes[name] = current
+                await broadcast("todos_updated", {"path": str(d)})
+
+
+def start_poll_fallback() -> list[asyncio.Task]:
+    """Start polling tasks for notes and todos when watchdog is unavailable.
+
+    Must be called from an async context (event loop running).
+    Returns list of asyncio tasks that can be cancelled for cleanup.
+    """
+    tasks = []
+    tasks.append(asyncio.ensure_future(_poll_notes()))
+    tasks.append(asyncio.ensure_future(_poll_todos()))
+    log.info("Started polling fallback (watchdog unavailable)")
+    return tasks

@@ -180,9 +180,29 @@ function extractWidgets(
     ),
   );
 
-  // Restore protected code blocks
+  // Restore protected code blocks in the main text
   for (const [ph, code] of codeSlots) {
     raw = raw.replace(ph, code);
+  }
+
+  // Also restore code placeholders inside widget content that was captured
+  // before restoration (block widgets like [todo], [kv], [diff], etc.)
+  for (const [key, node] of widgets) {
+    if (node && typeof node === "object" && "props" in node) {
+      const props = (node as React.ReactElement).props as Record<string, unknown>;
+      const content = props.content as string | undefined;
+      if (content) {
+        let restored = content;
+        for (const [ph, code] of codeSlots) {
+          restored = restored.replaceAll(ph, code);
+        }
+        if (restored !== content) {
+          // Clone the element with restored content
+          const el = node as React.ReactElement;
+          widgets.set(key, { ...el, props: { ...props, content: restored } });
+        }
+      }
+    }
   }
 
   return { text: raw, widgets };

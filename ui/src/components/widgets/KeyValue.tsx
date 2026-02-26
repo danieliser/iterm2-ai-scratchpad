@@ -3,11 +3,14 @@ interface Props {
 }
 
 export function KeyValue({ content }: Props) {
-  const pairs = content
-    .trim()
-    .split("|")
+  // Support both formats: "K=V\nK2=V2" (documented) and "K:V|K2:V2" (legacy)
+  const usesNewlines = content.includes("\n");
+  const lines = usesNewlines ? content.trim().split("\n") : content.trim().split("|");
+  const pairs = lines
     .map((pair) => {
-      const idx = pair.indexOf(":");
+      // Try = first (documented), fall back to : (legacy)
+      let idx = pair.indexOf("=");
+      if (idx === -1) idx = pair.indexOf(":");
       if (idx === -1) return null;
       return { key: pair.slice(0, idx).trim(), val: pair.slice(idx + 1).trim() };
     })
