@@ -10,7 +10,8 @@ from .storage import (
     DEFAULT_SESSION, get_current_session_id, set_current_session_id,
     get_current_tab_session_ids, set_current_tab_session_ids, set_iterm2_connection,
 )
-from .streaming import broadcast, start_watchdog, start_todo_watchdog, set_event_loop
+from . import WATCHDOG_AVAILABLE
+from .streaming import broadcast, start_watchdog, start_todo_watchdog, start_poll_fallback, set_event_loop
 from .handlers import (
     handle_options, handle_get_ui, handle_post_note, handle_get_notes,
     handle_delete_notes, handle_put_note, handle_patch_note, handle_get_session,
@@ -133,9 +134,14 @@ async def _iterm2_main(connection) -> None:
     runner = await _run_server()
     observer = start_watchdog()
     todo_observer = start_todo_watchdog()
+    poll_tasks = []
+    if not WATCHDOG_AVAILABLE:
+        poll_tasks = start_poll_fallback()
     try:
         await _session_monitor(connection)
     finally:
+        for t in poll_tasks:
+            t.cancel()
         if observer:
             observer.stop()
             observer.join()
@@ -158,10 +164,15 @@ def main() -> None:
             runner = await _run_server()
             observer = start_watchdog()
             todo_observer = start_todo_watchdog()
+            poll_tasks = []
+            if not WATCHDOG_AVAILABLE:
+                poll_tasks = start_poll_fallback()
             try:
                 while True:
                     await asyncio.sleep(3600)
             finally:
+                for t in poll_tasks:
+                    t.cancel()
                 if observer:
                     observer.stop()
                     observer.join()
