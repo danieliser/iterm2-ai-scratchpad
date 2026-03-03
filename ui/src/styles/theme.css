@@ -902,6 +902,8 @@ body::after {
 .widget-run-btn:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -1px; }
 .widget-run-btn.bg { background: var(--accent-info-dim); border-color: rgba(93, 212, 255, 0.4); color: var(--accent-info); }
 .widget-run-btn.bg:hover { background: #2d4a5a; }
+.widget-run-btn.copy { background: var(--bg-surface); border-color: var(--border); color: var(--text-secondary); font-size: 9px; min-width: 0; padding: 1px 4px; }
+.widget-run-btn.copy:hover { background: var(--bg-elevated); }
 .widget-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .widget-run-output { padding: var(--space-2); font-family: var(--font-mono); font-size: 10px; line-height: 1.4; white-space: pre-wrap; max-height: 180px; overflow-y: auto; border-top: 1px solid var(--border); }
 .widget-run-output.error { color: var(--accent-red); }
