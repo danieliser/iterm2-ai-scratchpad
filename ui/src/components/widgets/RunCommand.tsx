@@ -10,6 +10,7 @@ export function RunCommand({ command, label }: Props) {
   const [output, setOutput] = useState<string | null>(null);
   const [outputClass, setOutputClass] = useState("");
   const [running, setRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const run = async (bg: boolean) => {
     if (bg) {
@@ -69,6 +70,16 @@ export function RunCommand({ command, label }: Props) {
           onClick={() => run(true)}
         >
           BG
+        </button>
+        <button
+          className="widget-run-btn copy"
+          onClick={() => {
+            navigator.clipboard.writeText(command);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "✓" : "📋"}
         </button>
       </div>
       {(output !== null || running) && (

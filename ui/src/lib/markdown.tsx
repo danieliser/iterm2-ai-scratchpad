@@ -62,6 +62,15 @@ function extractWidgets(
     });
   }
 
+  // Run widget: [run:label]command[/run] — extracted FIRST to protect command
+  // content (e.g. JSON strings) from being corrupted by inline widget patterns.
+  replace(
+    /\[run(?::([^\]]+))?]([\s\S]*?)\[\/run]/g,
+    (_, label, cmd) => (
+      <RunCommand command={cmd.trim()} label={label || undefined} />
+    ),
+  );
+
   // Progress bars: [progress:75] or [progress:75:Building...]
   replace(
     /\[progress:(\d+)(?::([^\]]*))?]/g,
@@ -172,13 +181,6 @@ function extractWidgets(
     (_, code) => <Mermaid code={code.trim()} />,
   );
 
-  // Run widget: [run:label]command[/run]
-  replace(
-    /\[run(?::([^\]]+))?]([\s\S]*?)\[\/run]/g,
-    (_, label, cmd) => (
-      <RunCommand command={cmd.trim()} label={label || undefined} />
-    ),
-  );
 
   // Restore protected code blocks in the main text
   for (const [ph, code] of codeSlots) {
